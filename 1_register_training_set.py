@@ -11,6 +11,7 @@ Usage:
 
 import argparse
 import sys
+import os
 from pathlib import Path
 import pandas as pd
 
@@ -81,20 +82,104 @@ def register_from_file(file_path: str, name: str = None, key_columns: list = Non
     print(f"   Rows: {len(df):,}")
     print(f"   Columns: {len(df.columns)}")
 
-    # Auto-generate name if not provided
+    # Get username from environment
+    username = os.environ.get("DOMINO_STARTING_USERNAME", "user")
+    
+    # Prompt for name if not provided
     if name is None:
-        name = f"training_set_{file_path.stem}"
+        print(f"\n📝 Training set name required (must be unique across Domino instance)")
+        suggested_name = f"training_set_{file_path.stem}"
+        name = input(f"Enter training set name [{suggested_name}]: ").strip()
+        if not name:
+            name = suggested_name
+    
+    # Add username suffix to ensure uniqueness
+    if not name.endswith(f"_{username}"):
+        name = f"{name}_{username}"
 
     # Register the training set
     print(f"\n📤 Registering training set: {name}")
     
-    # Identify target column (assuming last column is target)
-    target_columns = [df.columns[-1]] if 'target' in df.columns[-1].lower() else []
+    # Identify target column
+    # Look for common target column names, otherwise use last column
+    target_indicators = ['target', 'label', 'y', 'output', 'prediction', 'price', 'value', 'score']
+    target_columns = []
     
-    # Set up monitoring metadata for model monitoring
+    for col in df.columns:
+        if any(indicator in col.lower() for indicator in target_indicators):
+            target_columns = [col]
+            break
+    
+    if not target_columns:
+        # Default to last column if no clear target found
+        target_columns = [df.columns[-1]]
+    
+    # Auto-detect likely model type based on target column
+    if target_columns:
+        target_col = target_columns[0]
+        target_dtype = df[target_col].dtype
+        unique_values = df[target_col].nunique()
+        
+        if target_dtype == 'object' or unique_values <= 10:
+            suggested_type = "classification"
+        else:
+            suggested_type = "regression"
+            
+        print(f"\n🎯 Target column '{target_col}' detected:")
+        print(f"   - Data type: {target_dtype}")
+        print(f"   - Unique values: {unique_values}")
+        print(f"   - Sample values: {list(df[target_col].unique()[:5])}")
+    else:
+        suggested_type = "classification"
+        print(f"\n⚠️  No clear target column detected")
+    
+    # Prompt user to confirm model type
+    print(f"\n📊 Model type selection:")
+    print(f"1. Classification (predicts categories/classes)")
+    print(f"2. Regression (predicts continuous numeric values)")
+    
+    while True:
+        choice = input(f"Select model type [1 for classification, 2 for regression] (suggested: {suggested_type}): ").strip()
+        if choice == "1" or (choice == "" and suggested_type == "classification"):
+            model_type = "classification"
+            break
+        elif choice == "2" or (choice == "" and suggested_type == "regression"):
+            model_type = "regression"
+            break
+        else:
+            print("Please enter 1 for classification or 2 for regression")
+    
+    # Analyze column types based on model type
+    categorical_columns = []
+    ordinal_columns = []
+    
+    for col in df.columns:
+        if df[col].dtype == 'object':
+            # For regression, don't include numeric targets in categorical
+            # For classification, include all object dtype columns (including target)
+            if model_type == "regression" and col in target_columns:
+                print(f"   ⚠️  Warning: Target column '{col}' is text but model type is regression")
+                print(f"      Consider converting to numeric or changing to classification")
+            categorical_columns.append(col)
+    
+    # For regression, ensure target is not in categorical columns if it's numeric
+    if model_type == "regression" and target_columns:
+        target_col = target_columns[0]
+        if target_col in categorical_columns and df[target_col].dtype != 'object':
+            categorical_columns.remove(target_col)
+    
+    numeric_features = [col for col in df.columns if col not in target_columns and col not in categorical_columns]
+    
+    print(f"\n   📋 Schema analysis ({model_type} model):")
+    print(f"   - Target columns: {target_columns}")
+    print(f"   - Categorical columns: {categorical_columns}")
+    print(f"   - Numeric feature columns: {numeric_features}")
+    
+    # Set up comprehensive monitoring metadata for model monitoring
     monitoring_meta = model.MonitoringMeta(
-        categorical_columns=[col for col in df.columns if df[col].dtype == 'object' and col not in target_columns],
-        timestamp_columns=[],
+        categorical_columns=categorical_columns,
+        timestamp_columns=[],  # No timestamp columns by default
+        ordinal_columns=ordinal_columns  # No ordinal columns by default
     )
     
     ts_version = TrainingSetClient.create_training_set_version(
