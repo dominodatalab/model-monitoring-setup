@@ -1,0 +1,25 @@
+{
+  "_comment": "Model Monitoring Configuration Template",
+  "_instructions": "Copy to monitoring_config.json and update values, or run: python setup_monitoring.py",
+  "domino": {
+    "base_url": "https://your-domino-instance.com",
+    "user_api_key_env": "DOMINO_USER_API_KEY"
+  },
+  "model_api": {
+    "endpoint_url": "https://your-domino-instance.com:443/models/YOUR_MODEL_ID/labels/prod/model",
+    "token": "YOUR_MODEL_API_TOKEN",
+    "timeout": 60
+  },
+  "model_monitor": {
+    "model_id": "YOUR_MODEL_MONITOR_ID"
+  },
+  "data_sources": {
+    "ground_truth": "your-ground-truth-datasource"
+  },
+  "test_data": {
+    "path": "/mnt/data/test"
+  },
+  "monitoring": {
+    "daily_predictions": 30
+  }
+}
