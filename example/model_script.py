@@ -66,18 +66,15 @@ else:
     data_capture_client = None
 
 
-def predict(input_data):
+def predict(**kwargs):
     """
     Main prediction function with monitoring capture.
     
     Args:
-        input_data: Dictionary with feature values, e.g.:
-            {
-                "1_feature": 0.5,
-                "2_feature": -0.2,
-                ...
-                "10_feature": 1.1
-            }
+        **kwargs: Feature values passed as keyword arguments, e.g.:
+            1_feature=0.5, 2_feature=-0.2, etc.
+            OR
+            input_data dictionary with all features
     
     Returns:
         Dictionary with prediction results:
@@ -89,6 +86,14 @@ def predict(input_data):
                 "timestamp": "iso-timestamp"
             }
     """
+    # Handle different input formats
+    if len(kwargs) == 1 and 'input_data' in kwargs:
+        # Called with input_data dictionary (for testing)
+        input_data = kwargs['input_data']
+    else:
+        # Called with features as keyword arguments (Domino API format)
+        input_data = kwargs
+    
     # Extract features in the correct order
     feature_values = []
     for feature_name in feature_names:
@@ -161,7 +166,7 @@ if __name__ == "__main__":
         '10_feature': -0.5
     }
     
-    result = predict(test_input)
+    result = predict(input_data=test_input)
     print("Test prediction:")
     print(f"  Class: {result['predicted_class']}")
     print(f"  Confidence: {result['confidence_score']:.3f}")
