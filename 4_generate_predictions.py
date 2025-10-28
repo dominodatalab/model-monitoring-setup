@@ -241,6 +241,14 @@ def main():
         print(f"❌ Error: {e}")
         sys.exit(1)
 
+    print("\n" + "="*50)
+    print("✅ PREDICTIONS GENERATED SUCCESSFULLY")
+    print("="*50)
+    print("\nNext step (WAIT 1+ HOURS FIRST):")
+    print("python 5_upload_ground_truth.py")
+    print("\nNote: Ground truth data needs time to upload to S3")
+    print("="*50)
+
 
 if __name__ == "__main__":
     main()

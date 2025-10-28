@@ -175,6 +175,13 @@ def main():
         print("   python upload_ground_truth.py")
         print("   python generate_predictions.py")
 
+        print("\n" + "="*50)
+        print("✅ MONITORING CONFIGURATION COMPLETE")
+        print("="*50)
+        print("\nNext step:")
+        print("python 4_generate_predictions.py --count 30")
+        print("="*50)
+
     except KeyboardInterrupt:
         print("\n\n❌ Cancelled")
         sys.exit(1)

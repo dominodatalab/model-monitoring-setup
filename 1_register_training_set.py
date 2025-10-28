@@ -15,12 +15,37 @@ from pathlib import Path
 import pandas as pd
 
 try:
-    from domino.training_sets import client, model
+    from domino.training_sets import TrainingSetClient, model
     DOMINO_AVAILABLE = True
 except ImportError:
     DOMINO_AVAILABLE = False
     print("⚠️  Warning: domino.training_sets not available")
-    print("Install with: pip install dominodatalab")
+    print("Installing dominodatalab package...")
+    
+    import subprocess
+    try:
+        # Install with --user and ignore dependency conflicts
+        subprocess.check_call([
+            sys.executable, "-m", "pip", "install", "--user", 
+            "--no-deps", "dominodatalab"
+        ])
+        print("✅ dominodatalab package installed successfully")
+        
+        # Restart Python path to pick up user-installed packages
+        import site
+        site.main()
+        
+        # Try importing again after installation
+        from domino.training_sets import TrainingSetClient, model
+        DOMINO_AVAILABLE = True
+        print("✅ domino.training_sets now available")
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Failed to install dominodatalab: {e}")
+        print("Try running manually: pip install --user dominodatalab")
+    except ImportError as e:
+        print(f"❌ Installation succeeded but import still failed: {e}")
+        print("The package may need to be installed in the Domino environment.")
+        print("Try running manually: pip install --user dominodatalab")
 
 
 def register_from_file(file_path: str, name: str = None, key_columns: list = None):
@@ -62,20 +87,27 @@ def register_from_file(file_path: str, name: str = None, key_columns: list = Non
 
     # Register the training set
     print(f"\n📤 Registering training set: {name}")
-
-    training_set = model.TrainingSet(
+    
+    # Identify target column (assuming last column is target)
+    target_columns = [df.columns[-1]] if 'target' in df.columns[-1].lower() else []
+    
+    # Set up monitoring metadata for model monitoring
+    monitoring_meta = model.MonitoringMeta(
+        categorical_columns=[col for col in df.columns if df[col].dtype == 'object' and col not in target_columns],
+        timestamp_columns=[],
+    )
+    
+    ts_version = TrainingSetClient.create_training_set_version(
         training_set_name=name,
-        training_data=df,
-        key_columns=key_columns or []
+        df=df,
+        key_columns=key_columns or [],
+        target_columns=target_columns,
+        monitoring_meta=monitoring_meta
     )
 
-    ts_client = client.TrainingSetClient()
-    ts_version = ts_client.put(training_set)
-
     print(f"✅ Training set registered successfully")
-    print(f"   Name: {ts_version.training_set_name}")
-    print(f"   Version: {ts_version.training_set_version}")
-    print(f"   Rows: {ts_version.number_of_records:,}")
+    print(f"   Name: {name}")
+    print(f"   Path: {ts_version.path}")
 
     return ts_version
 
@@ -139,6 +171,19 @@ def main():
     except Exception as e:
         print(f"❌ Error: {e}")
         sys.exit(1)
+
+    print("\n" + "="*60)
+    print("✅ TRAINING SET REGISTERED SUCCESSFULLY")
+    print("="*60)
+    print("\nNext steps:")
+    print("2. Create Model Deployment Script:")
+    print("   - Add prediction capture to your model script (see prediction_capture_example.py)")
+    print("   - Deploy as Domino Model API endpoint")
+    print("   - Select this training set in Model Monitor UI (Settings > Monitoring)")
+    print("\n3. Configure data sources in three places (see README Step 4)")
+    print("\n3. Configure monitoring:")
+    print("   python 3_setup_monitoring.py")
+    print("="*60)
 
 
 if __name__ == "__main__":

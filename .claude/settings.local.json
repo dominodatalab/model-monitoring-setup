@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mv:*)",
+      "WebFetch(domain:docs.dominodatalab.com)",
+      "Bash(python:*)",
+      "Read(/mnt/artifacts/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

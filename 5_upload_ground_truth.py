@@ -170,6 +170,15 @@ def main():
         print(f"❌ Error: {e}")
         sys.exit(1)
 
+    print("\n" + "="*50)
+    print("✅ GROUND TRUTH UPLOAD COMPLETE")
+    print("="*50)
+    print("\nSetup complete! Check Model Monitor UI:")
+    print("- Predictions: Model Details > Predictions")
+    print("- Ground Truth: Ground Truth Status")
+    print("- Schedule your automated checks in the Model Monitor to see Metrics")
+    print("="*50)
+
 
 if __name__ == "__main__":
     main()
