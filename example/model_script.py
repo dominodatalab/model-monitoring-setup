@@ -9,7 +9,9 @@ Deploy this as a Domino Model API endpoint.
 
 import joblib
 import uuid
+import os
 from datetime import datetime, timezone
+from pathlib import Path
 import numpy as np
 
 # Import DataCaptureClient for monitoring
@@ -20,8 +22,33 @@ except ImportError:
     MONITORING_ENABLED = False
     print("⚠️  Model Monitoring disabled - domino_data_capture not available")
 
+# Find the model file in the correct location
+def find_model_path():
+    """Find the model.pkl file in different Domino environments"""
+    # For Domino endpoints, use DOMINO_WORKING_DIR
+    if 'DOMINO_WORKING_DIR' in os.environ:
+        model_path = Path(os.environ['DOMINO_WORKING_DIR']) / 'example' / 'model.pkl'
+        if model_path.exists():
+            return str(model_path)
+    
+    # For workspaces/runs, try relative paths
+    possible_paths = [
+        'model.pkl',  # Current directory
+        '../model.pkl',  # Parent directory
+        'example/model.pkl',  # Example subdirectory
+        '/mnt/artifacts/model.pkl',  # Artifacts directory
+    ]
+    
+    for path in possible_paths:
+        if Path(path).exists():
+            return path
+    
+    raise FileNotFoundError("model.pkl not found in any expected location")
+
 # Load the trained model at module level
-model = joblib.load('model.pkl')
+model_path = find_model_path()
+print(f"Loading model from: {model_path}")
+model = joblib.load(model_path)
 
 # Define feature names (must match training data order)
 feature_names = [
