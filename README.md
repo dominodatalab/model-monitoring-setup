@@ -15,7 +15,7 @@ Quick setup for Domino Model Monitor with automated prediction capture and groun
 
 ## Step 1: Register Training Set
 
-Register your training data as a baseline for drift detection:
+Register your training data as a baseline for drift detection. **Note** that the training set must have a unique name across your Domino instance. 
 
 ```bash
 python register_training_set.py --file /path/to/training.csv --name "My Training Set"
