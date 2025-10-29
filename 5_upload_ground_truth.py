@@ -31,7 +31,6 @@ class GroundTruthUploader:
     CUSTOMIZE: Update the class for your specific use case:
     - Modify ground_truth_column_name if different from 'target'
     - Change is_regression=True for numerical targets
-    - Update datasource_type for non-S3 storage
     """
 
     def __init__(self, ground_truth_column_name="target", is_regression=False, datasource_type="s3", force_reregister=False):
@@ -114,7 +113,6 @@ class GroundTruthUploader:
         CUSTOMIZE: Update this method based on your ground truth data structure:
         1. Modify ground truth column name to match your data
         2. Change valueType if using numerical/regression targets
-        3. Update datasourceType if not using S3
         """
         filename = Path(file_path).name
         timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
@@ -291,7 +289,6 @@ def main():
     parser.add_argument("--regression", action="store_true", 
                        help="Use for regression models (numerical targets)")
     parser.add_argument("--datasource-type", default="s3", 
-                       choices=["s3", "azure", "gcs"], 
                        help="Data source type (default: s3)")
     parser.add_argument("--force-reregister", action="store_true", 
                        help="Force re-registration of existing datasets")

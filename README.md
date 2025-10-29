@@ -126,7 +126,7 @@ You need to configure data sources in **three places**:
 
 ### 4a. Create Main Data Source
 
-First, create a data source in Domino for storing ground truth data:
+First, create a data source in Domino for storing ground truth data (note that an Admin may have done this for you):
 
 1. Navigate to **Data > Data Sources** in Domino UI
 2. Click **New Data Source**
@@ -147,14 +147,14 @@ Make the data source available in your project:
 
 ### 4c. Configure in Model Monitor
 
-Configure the same data source in Model Monitor for ground truth ingestion:
+Configure the same data source in Model Monitor for ground truth ingestion (note that an Admin may have done this for you):
 
 1. Navigate to **Model Monitor** in Domino UI
-2. Select your model
-3. Go to **Configuration > Ground Truth**
-4. Add the data source you created in step 3a
+2. Go to the Monitoring Data Sources page
+3. Click **+ Add Data Source**
+4. Add the data source you created in step 4a
 
-**Important:** Use the **same name** for the data source in all three places (main data source, project connection, and Model Monitor) to avoid confusion.
+**Important:** Use the **same name** for the data source in both places (main data source and Model Monitor) to avoid confusion.
 
 ---
 
@@ -282,15 +282,14 @@ python 5_upload_ground_truth.py --ground-truth-column "target"
 # For regression models
 python 5_upload_ground_truth.py --ground-truth-column "score" --regression
 
-# For non-S3 data sources
-python 5_upload_ground_truth.py --datasource-type azure
+# Standard usage with S3 (default)
+python 5_upload_ground_truth.py
 ```
 
 **Required Customizations:**
 
 1. **Ground Truth Column Name**: Must match your training data
 2. **Model Type**: Use `--regression` flag for numerical targets
-3. **Data Source Type**: Specify `s3`, `azure`, or `gcs`
 
 ### Common Customization Scenarios
 
@@ -306,9 +305,9 @@ python 5_upload_ground_truth.py --datasource-type azure
 - Use `--regression` flag in script 5
 - Ensure numerical targets in ground truth
 
-**Different Storage:**
-- Update `--datasource-type` parameter
+**Data Source Configuration:**
 - Verify data source configuration in Domino UI
+- Ensure storage credentials and permissions are correct
 
 ---
 
