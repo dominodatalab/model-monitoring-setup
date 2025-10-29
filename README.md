@@ -23,6 +23,8 @@ Register your training data as a baseline for drift detection. **Note** that the
 python 1_register_training_set.py --file /path/to/training.csv --name "My Training Set"
 ```
 
+**Note:** Training set names are automatically cleaned (spaces → underscores) and made unique with your username suffix.
+
 The script accepts:
 - **CSV files** (`.csv`)
 - **Parquet files** (`.parquet`, `.pq`)

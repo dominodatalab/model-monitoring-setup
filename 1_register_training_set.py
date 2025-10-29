@@ -93,9 +93,20 @@ def register_from_file(file_path: str, name: str = None, key_columns: list = Non
         if not name:
             name = suggested_name
     
+    # Clean the name to be valid (alphanumeric and underscores only)
+    import re
+    original_name = name
+    name = re.sub(r'[^a-zA-Z0-9_]', '_', name)  # Replace invalid chars with underscores
+    name = re.sub(r'_+', '_', name)  # Replace multiple underscores with single
+    name = name.strip('_')  # Remove leading/trailing underscores
+    
     # Add username suffix to ensure uniqueness
     if not name.endswith(f"_{username}"):
         name = f"{name}_{username}"
+
+    # Show name cleaning if it changed
+    if name != original_name:
+        print(f"\n🔧 Name cleaned: '{original_name}' → '{name}'")
 
     # Register the training set
     print(f"\n📤 Registering training set: {name}")
