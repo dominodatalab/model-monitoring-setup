@@ -228,6 +228,90 @@ This registers the ground truth datasets with Model Monitor for quality metrics.
 
 ---
 
+## Customization for Your Project
+
+The scripts `4_generate_predictions.py` and `5_upload_ground_truth.py` are designed to work with different model types and data formats. Here's what you need to customize:
+
+### 4_generate_predictions.py
+
+**Required Customizations:**
+
+1. **Model API Input Format** (`call_model_api` method):
+   ```python
+   # Update payload structure to match your model's expected input
+   payload = {'data': your_input_format}
+   ```
+
+2. **Ground Truth Extraction** (Line ~137):
+   ```python
+   # Option 1: From folder structure (current)
+   actual_class = file_path.parent.name
+   
+   # Option 2: From CSV data
+   # df = pd.read_csv(file_path, nrows=1)
+   # actual_class = df['your_target_column'].iloc[0]
+   
+   # Option 3: From filename pattern
+   # actual_class = file_path.stem.split('_')[0]
+   ```
+
+3. **Response Parsing** (`call_model_api` method):
+   ```python
+   # Update to match your model's output format
+   return {
+       'predicted_class': result['your_prediction_key'],
+       'confidence_score': result['your_confidence_key'],
+       'event_id': result.get('event_id'),
+       'timestamp': result.get('timestamp')
+   }
+   ```
+
+4. **Ground Truth Column Name** (Line ~151):
+   ```python
+   'target': actual_class,  # Change 'target' to match your training data column
+   ```
+
+### 5_upload_ground_truth.py
+
+**Command Line Options:**
+
+```bash
+# For classification models (default)
+python 5_upload_ground_truth.py --ground-truth-column "target"
+
+# For regression models
+python 5_upload_ground_truth.py --ground-truth-column "score" --regression
+
+# For non-S3 data sources
+python 5_upload_ground_truth.py --datasource-type azure
+```
+
+**Required Customizations:**
+
+1. **Ground Truth Column Name**: Must match your training data
+2. **Model Type**: Use `--regression` flag for numerical targets
+3. **Data Source Type**: Specify `s3`, `azure`, or `gcs`
+
+### Common Customization Scenarios
+
+**Image Classification:**
+- Ground truth from folder names: `actual_class = file_path.parent.name`
+- Base64 image input to API
+
+**Tabular Data:**
+- Ground truth from CSV column: `actual_class = df['target'].iloc[0]`
+- JSON payload with feature values
+
+**Regression Models:**
+- Use `--regression` flag in script 5
+- Ensure numerical targets in ground truth
+
+**Different Storage:**
+- Update `--datasource-type` parameter
+- Verify data source configuration in Domino UI
+
+---
+
 ## Troubleshooting
 
 **No quality metrics appearing:**

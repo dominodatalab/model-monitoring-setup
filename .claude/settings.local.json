@@ -4,6 +4,11 @@
       "Bash(mv:*)",
       "WebFetch(domain:docs.dominodatalab.com)",
       "Bash(python:*)",
+      "Read(/mnt/artifacts/**)",
+      "Read(/mnt/artifacts/**)",
+      "Read(/mnt/**)",
+      "Read(/mnt/artifacts/**)",
+      "Read(/mnt/artifacts/**)",
       "Read(/mnt/artifacts/**)"
     ],
     "deny": [],

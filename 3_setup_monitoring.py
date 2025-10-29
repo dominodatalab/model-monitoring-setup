@@ -145,7 +145,10 @@ def create_config():
 
 def save_config(config):
     """Save configuration to file"""
-    config_file = Path('monitoring_config.json')
+    config_file = Path('/mnt/artifacts/monitoring_config.json')
+    
+    # Ensure the artifacts directory exists
+    config_file.parent.mkdir(parents=True, exist_ok=True)
 
     with open(config_file, 'w') as f:
         json.dump(config, f, indent=2)

@@ -26,9 +26,9 @@ class MonitoringConfig:
             return Path(config_file)
 
         candidates = [
+            Path('/mnt/artifacts/monitoring_config.json'),
             Path('monitoring_config.json'),
-            Path('/mnt/monitoring_config.json'),
-            Path('/mnt/artifacts/monitoring_config.json')
+            Path('/mnt/monitoring_config.json')
         ]
 
         for candidate in candidates:

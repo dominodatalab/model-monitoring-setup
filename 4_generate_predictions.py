@@ -53,8 +53,15 @@ class PredictionGenerator:
             print(f"❌ Test data path not found: {test_path}")
             return []
 
-        files = list(test_path.rglob("*.*"))
-        files = [f for f in files if f.suffix.lower() in ['.png', '.jpg', '.jpeg', '.csv']]
+        files = []
+        if test_path.is_file():
+            # Single file specified
+            if test_path.suffix.lower() in ['.png', '.jpg', '.jpeg', '.csv']:
+                files = [test_path]
+        elif test_path.is_dir():
+            # Directory specified - search for files
+            files = list(test_path.rglob("*.*"))
+            files = [f for f in files if f.suffix.lower() in ['.png', '.jpg', '.jpeg', '.csv']]
 
         print(f"📂 Found {len(files)} test files")
         return files
@@ -63,7 +70,10 @@ class PredictionGenerator:
         """
         Call deployed Model API.
 
-        Customize this method based on your model's input format.
+        CUSTOMIZE THIS METHOD based on your model's input format:
+        1. Update payload structure to match your model's expected input
+        2. Modify response parsing to extract prediction results
+        3. Adjust authentication if using different token format
         """
         try:
             # Example for image input (base64 encoded)
@@ -78,9 +88,11 @@ class PredictionGenerator:
                 # Read first row of CSV as example
                 import pandas as pd
                 df = pd.read_csv(file_path, nrows=1)
+                # CUSTOMIZE: Modify this to match your model's input format
                 payload = {'data': df.to_dict('records')[0]}
 
             # Send request with HTTP Basic Auth
+            # CUSTOMIZE: Update authentication method if needed
             response = requests.post(
                 self.model_api_url,
                 json=payload,
@@ -89,12 +101,24 @@ class PredictionGenerator:
             )
 
             response.raise_for_status()
-            result = response.json().get('result', response.json())
+            json_response = response.json()
+            result = json_response.get('result', json_response)
 
-            if 'label' not in result or 'score' not in result:
-                return {'error': f'Invalid response: {response.json()}'}
-
-            return result
+            # CUSTOMIZE: Update response parsing to match your model's output format
+            # Handle different response formats
+            if 'predicted_class' in result and 'confidence_score' in result:
+                # Example model format
+                return result
+            elif 'label' in result and 'score' in result:
+                # Generic format - map to expected keys
+                return {
+                    'predicted_class': result['label'],
+                    'confidence_score': result['score'],
+                    'event_id': result.get('event_id'),
+                    'timestamp': result.get('timestamp')
+                }
+            else:
+                return {'error': f'Invalid response format: {json_response}'}
 
         except Exception as e:
             return {'error': f'{e}'}
@@ -119,9 +143,21 @@ class PredictionGenerator:
                 # Randomly select a test file
                 file_path = random.choice(test_files)
 
-                # Determine actual class from filename/folder structure
-                # Customize this based on your data organization
+                # CUSTOMIZE: Determine actual ground truth based on your data organization
+                # Option 1: Extract from folder structure (current approach)
                 actual_class = file_path.parent.name
+                
+                # Option 2: Extract from CSV data (if using tabular data)
+                # if file_path.suffix.lower() == '.csv':
+                #     import pandas as pd
+                #     df = pd.read_csv(file_path, nrows=1)
+                #     actual_class = df['target'].iloc[0]  # Adjust column name as needed
+                
+                # Option 3: Use filename pattern
+                # actual_class = file_path.stem.split('_')[0]  # Extract prefix before underscore
+                
+                # Option 4: Use lookup table/mapping
+                # actual_class = self.get_ground_truth_for_file(file_path)
 
                 # Call API
                 result = self.call_model_api(file_path)
@@ -135,9 +171,9 @@ class PredictionGenerator:
                 self.predictions.append({
                     'event_id': result.get('event_id', f'pred_{i}'),
                     'timestamp': result.get('timestamp', datetime.now(timezone.utc).isoformat()),
-                    'actual_class': actual_class,
-                    'predicted_class': result.get('label'),
-                    'confidence': result.get('score')
+                    'target': actual_class,  # CUSTOMIZE: Column name must match your training data
+                    'predicted_class': result.get('predicted_class'),
+                    'confidence': result.get('confidence_score')
                 })
 
                 successful += 1
@@ -177,12 +213,12 @@ class PredictionGenerator:
             for pred in self.predictions:
                 records.append({
                     'event_id': pred['event_id'],
-                    'actual_class': pred['actual_class'],
+                    'target': pred['target'],  # Changed from 'actual_class' to 'target'
                     'timestamp': pred['timestamp']
                 })
 
             csv_buffer = io.StringIO()
-            writer = csv.DictWriter(csv_buffer, fieldnames=['event_id', 'actual_class', 'timestamp'])
+            writer = csv.DictWriter(csv_buffer, fieldnames=['event_id', 'target', 'timestamp'])
             writer.writeheader()
             writer.writerows(records)
 

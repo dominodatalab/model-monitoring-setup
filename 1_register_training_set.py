@@ -182,12 +182,28 @@ def register_from_file(file_path: str, name: str = None, key_columns: list = Non
         ordinal_columns=ordinal_columns  # No ordinal columns by default
     )
     
+    # For monitoring, we only want features (not target) in the training set
+    # Remove target column from the dataframe used for training set registration
+    feature_df = df.drop(columns=target_columns) if target_columns else df
+    
+    # Update monitoring_meta to exclude target from categorical columns
+    feature_categorical_columns = [col for col in categorical_columns if col not in target_columns]
+    monitoring_meta_features = model.MonitoringMeta(
+        categorical_columns=feature_categorical_columns,
+        timestamp_columns=[],
+        ordinal_columns=ordinal_columns
+    )
+    
+    print(f"\n   📋 Final training set schema (features only for monitoring):")
+    print(f"   - Feature columns: {list(feature_df.columns)}")
+    print(f"   - Categorical features: {feature_categorical_columns}")
+    
     ts_version = TrainingSetClient.create_training_set_version(
         training_set_name=name,
-        df=df,
+        df=feature_df,  # Only features, no target
         key_columns=key_columns or [],
-        target_columns=target_columns,
-        monitoring_meta=monitoring_meta
+        target_columns=[],  # No target columns for monitoring
+        monitoring_meta=monitoring_meta_features
     )
 
     print(f"✅ Training set registered successfully")
