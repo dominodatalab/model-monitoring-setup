@@ -129,6 +129,7 @@ class PredictionGenerator:
         print("PREDICTION GENERATION")
         print("=" * 60)
         print(f"Target: {count} predictions")
+        print(f"API URL: {self.model_api_url}")
 
         test_files = self.get_test_files()
         if not test_files:
@@ -187,8 +188,7 @@ class PredictionGenerator:
                 print(f"   ❌ Error: {e}")
                 failed += 1
 
-        print(f"\n✅ Complete:")
-        print(f"   Successful: {successful}")
+        print(f"\n✅ Complete: {successful} successful API calls")
         print(f"   Failed: {failed}")
 
         return successful > 0
@@ -230,6 +230,9 @@ class PredictionGenerator:
 
             datasource = DataSourceClient().get_datasource(self.datasource_name)
             s3_key = f"ground_truth/{self.model_id}/{self.today}.csv"
+            
+            print(f"Ground truth file location: {self.datasource_name}")
+            print(f"Ground truth file name: {s3_key}")
 
             bytes_buffer = io.BytesIO(csv_bytes)
             datasource.upload_fileobj(s3_key, bytes_buffer)
