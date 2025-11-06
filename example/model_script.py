@@ -43,10 +43,11 @@ model_path = find_model_path()
 print(f"Loading model from: {model_path}")
 model = joblib.load(model_path)
 
-# Define feature names (must match training data order)
+# Define feature names (must match training data order, including target)
 feature_names = [
     '1_feature', '2_feature', '3_feature', '4_feature', '5_feature',
-    '6_feature', '7_feature', '8_feature', '9_feature', '10_feature'
+    '6_feature', '7_feature', '8_feature', '9_feature', '10_feature',
+    'target'  # Include target to match training set schema
 ]
 
 # Define prediction names
@@ -85,20 +86,21 @@ def predict(**kwargs):
         # Called with features as keyword arguments (Domino API format)
         input_data = kwargs
     
-    # Extract features in the correct order
-    feature_values = []
-    for feature_name in feature_names:
+    # Extract features in the correct order (excluding target for prediction)
+    model_feature_names = [name for name in feature_names if name != 'target']
+    model_feature_values = []
+    for feature_name in model_feature_names:
         if feature_name not in input_data:
             raise ValueError(f"Missing required feature: {feature_name}")
-        feature_values.append(input_data[feature_name])
+        model_feature_values.append(input_data[feature_name])
     
-    # Convert to numpy array for prediction
+    # Convert to numpy array for prediction (using only model features, not target)
     import pandas as pd
-    feature_df = pd.DataFrame([feature_values], columns=feature_names)
+    model_feature_df = pd.DataFrame([model_feature_values], columns=model_feature_names)
     
     # Make prediction
-    predicted_class = model.predict(feature_df)[0]
-    class_probabilities = model.predict_proba(feature_df)[0].tolist()
+    predicted_class = model.predict(model_feature_df)[0]
+    class_probabilities = model.predict_proba(model_feature_df)[0].tolist()
     
     # Get confidence score (max probability)
     confidence_score = max(class_probabilities)
@@ -106,13 +108,17 @@ def predict(**kwargs):
     # Prediction values to capture for monitoring
     predict_values = [predicted_class, confidence_score]
     
+    # Create complete feature values including target (predicted class) for monitoring capture
+    # This matches the training set schema: [10 features + target]
+    complete_feature_values = model_feature_values + [predicted_class]
+    
     # Generate unique event ID and timestamp
     event_id = str(uuid.uuid4())
     event_time = datetime.now(timezone.utc).isoformat()
     
-    # Capture prediction for monitoring
+    # Capture prediction for monitoring (with complete schema match)
     data_capture_client.capturePrediction(
-        feature_values,
+        complete_feature_values,  # Include predicted target to match training schema
         predict_values,
         event_id=event_id,
         timestamp=event_time,

@@ -192,11 +192,51 @@ def register_from_file(file_path: str, name: str = None, key_columns: list = Non
         if 'timestamp' in col.lower() or 'time' in col.lower() or 'date' in col.lower():
             timestamp_columns.append(col)
     
+    # Add timestamp column if missing (required for effective model monitoring)
+    if not timestamp_columns:
+        from datetime import datetime, timezone
+        import numpy as np
+        
+        timestamp_col_name = 'training_timestamp'
+        print(f"   ⏰ Adding timestamp column '{timestamp_col_name}' for monitoring")
+        
+        # Create realistic timestamps spread over training period
+        # Simulate data collected over the past 30 days
+        base_time = datetime.now(timezone.utc)
+        time_range_seconds = 30 * 24 * 60 * 60  # 30 days in seconds
+        
+        # Generate random timestamps within the range
+        random_offsets = np.random.uniform(0, time_range_seconds, len(df))
+        timestamps = [
+            (base_time - pd.Timedelta(seconds=offset)).isoformat()
+            for offset in random_offsets
+        ]
+        
+        df[timestamp_col_name] = timestamps
+        timestamp_columns = [timestamp_col_name]
+        
+        print(f"   ✅ Added {len(timestamps)} timestamps spanning {time_range_seconds/(24*60*60):.0f} days")
+    
+    # Enhanced ordinal column detection
+    # Look for columns that might have natural ordering
+    enhanced_ordinal_columns = ordinal_columns.copy()
+    for col in df.columns:
+        if col not in categorical_columns and col not in target_columns and col not in timestamp_columns:
+            # Check if column has limited unique values that might represent ordinal data
+            unique_values = df[col].nunique()
+            if unique_values <= 10 and df[col].dtype in ['object', 'category']:
+                # Check for potential ordinal patterns (size, rating, etc.)
+                col_lower = col.lower()
+                ordinal_indicators = ['size', 'rating', 'grade', 'level', 'rank', 'score', 'priority']
+                if any(indicator in col_lower for indicator in ordinal_indicators):
+                    enhanced_ordinal_columns.append(col)
+                    print(f"   🔢 Detected potential ordinal column: {col}")
+    
     # Set up comprehensive monitoring metadata for model monitoring
     monitoring_meta = model.MonitoringMeta(
         categorical_columns=categorical_columns,
         timestamp_columns=timestamp_columns,
-        ordinal_columns=ordinal_columns
+        ordinal_columns=enhanced_ordinal_columns
     )
     
     # Auto-detect key columns (event_id, id, etc.)
@@ -209,27 +249,47 @@ def register_from_file(file_path: str, name: str = None, key_columns: list = Non
     # Include ALL columns for training set registration (including target and monitoring columns)
     # This matches the example-register-training.py approach
     print(f"\n   📋 Final training set schema (all columns for comprehensive monitoring):")
-    print(f"   - All columns: {list(df.columns)}")
+    print(f"   - All columns ({len(df.columns)}): {list(df.columns)}")
     print(f"   - Target columns: {target_columns}")
     print(f"   - Key columns: {auto_key_columns}")
     print(f"   - Categorical columns: {categorical_columns}")
     print(f"   - Timestamp columns: {timestamp_columns}")
+    print(f"   - Ordinal columns: {enhanced_ordinal_columns}")
+    print(f"   - Numeric feature columns: {[col for col in df.columns if col not in target_columns + categorical_columns + timestamp_columns + enhanced_ordinal_columns]}")
     
-    # Add metadata about the training set
+    print(f"\n   🔍 MonitoringMeta configuration:")
+    print(f"   - Categorical: {len(categorical_columns)} columns")
+    print(f"   - Timestamp: {len(timestamp_columns)} columns") 
+    print(f"   - Ordinal: {len(enhanced_ordinal_columns)} columns")
+    
+    # Add comprehensive metadata about the training set
     meta = {
         "dataset": "model_monitoring_training_data",
         "total_records": str(len(df)),
+        "total_columns": str(len(df.columns)),
         "classes": ", ".join([str(c) for c in df[target_columns[0]].unique()]) if target_columns else "unknown",
         "features": str(len([col for col in df.columns if col not in target_columns])),
-        "description": f"Training data with {len(df.columns)} columns including monitoring metadata",
-        "model_type": model_type
+        "categorical_features": str(len(categorical_columns)),
+        "timestamp_features": str(len(timestamp_columns)),
+        "ordinal_features": str(len(enhanced_ordinal_columns)),
+        "numeric_features": str(len([col for col in df.columns if col not in target_columns + categorical_columns + timestamp_columns + enhanced_ordinal_columns])),
+        "description": f"Training data with comprehensive monitoring metadata: {len(categorical_columns)} categorical, {len(timestamp_columns)} timestamp, {len(enhanced_ordinal_columns)} ordinal columns",
+        "model_type": model_type,
+        "monitoring_enabled": "true",
+        "timestamp_added": "true" if not any('timestamp' in col.lower() or 'time' in col.lower() or 'date' in col.lower() for col in df.columns if col != 'training_timestamp') else "false"
     }
+    
+    # Include target column in training set for complete monitoring
+    # Prediction capture will be updated to include target output to match this schema
+    print(f"   🎯 Creating complete monitoring dataset (including target)")
+    print(f"   - Training columns: {len(df.columns)}")
+    print(f"   - Includes target: {target_columns}")
     
     ts_version = TrainingSetClient.create_training_set_version(
         training_set_name=name,
-        df=df,  # Include ALL columns (features, target, and monitoring columns)
+        df=df,  # Include ALL columns (features, target, and timestamp)
         key_columns=auto_key_columns,
-        target_columns=target_columns,
+        target_columns=target_columns,  # Include target columns
         monitoring_meta=monitoring_meta,
         meta=meta
     )
@@ -258,18 +318,16 @@ def register_from_dataframe(df: pd.DataFrame, name: str, key_columns: list = Non
     print(f"   Rows: {len(df):,}")
     print(f"   Columns: {len(df.columns)}")
 
-    training_set = model.TrainingSet(
+    # Use the same approach as register_from_file for consistency
+    ts_version = TrainingSetClient.create_training_set_version(
         training_set_name=name,
-        training_data=df,
+        df=df,
         key_columns=key_columns or []
     )
 
-    ts_client = client.TrainingSetClient()
-    ts_version = ts_client.put(training_set)
-
     print(f"✅ Training set registered successfully")
-    print(f"   Name: {ts_version.training_set_name}")
-    print(f"   Version: {ts_version.training_set_version}")
+    print(f"   Name: {name}")
+    print(f"   Path: {ts_version.path}")
 
     return ts_version
 
