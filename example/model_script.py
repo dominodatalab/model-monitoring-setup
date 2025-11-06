@@ -13,14 +13,7 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 import numpy as np
-
-# Import DataCaptureClient for monitoring
-try:
-    from domino_data_capture.data_capture_client import DataCaptureClient
-    MONITORING_ENABLED = True
-except ImportError:
-    MONITORING_ENABLED = False
-    print("⚠️  Model Monitoring disabled - domino_data_capture not available")
+from domino_data_capture.data_capture_client import DataCaptureClient
 
 # Find the model file in the correct location
 def find_model_path():
@@ -60,10 +53,8 @@ feature_names = [
 predict_names = ['predicted_class', 'confidence_score']
 
 # Initialize DataCaptureClient once at module level
-if MONITORING_ENABLED:
-    data_capture_client = DataCaptureClient(feature_names, predict_names)
-else:
-    data_capture_client = None
+data_capture_client = DataCaptureClient(feature_names, predict_names)
+
 
 
 def predict(**kwargs):
@@ -120,19 +111,14 @@ def predict(**kwargs):
     event_time = datetime.now(timezone.utc).isoformat()
     
     # Capture prediction for monitoring
-    if MONITORING_ENABLED and data_capture_client is not None:
-        try:
-            data_capture_client.capturePrediction(
-                feature_values,
-                predict_values,
-                event_id=event_id,
-                timestamp=event_time,
-                prediction_probability=class_probabilities  # Enable AUC/log loss metrics
-            )
-        except Exception as e:
-            # Don't fail prediction if monitoring fails
-            print(f"⚠️  Monitoring capture failed: {e}")
-    
+    data_capture_client.capturePrediction(
+        feature_values,
+        predict_values,
+        event_id=event_id,
+        timestamp=event_time,
+        prediction_probability=class_probabilities  # Enable AUC/log loss metrics
+    )
+            
     # Return prediction response
     return {
         "predicted_class": predicted_class,

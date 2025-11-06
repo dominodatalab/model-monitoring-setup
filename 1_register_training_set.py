@@ -186,35 +186,52 @@ def register_from_file(file_path: str, name: str = None, key_columns: list = Non
     print(f"   - Categorical columns: {categorical_columns}")
     print(f"   - Numeric feature columns: {numeric_features}")
     
+    # Auto-detect timestamp columns
+    timestamp_columns = []
+    for col in df.columns:
+        if 'timestamp' in col.lower() or 'time' in col.lower() or 'date' in col.lower():
+            timestamp_columns.append(col)
+    
     # Set up comprehensive monitoring metadata for model monitoring
     monitoring_meta = model.MonitoringMeta(
         categorical_columns=categorical_columns,
-        timestamp_columns=[],  # No timestamp columns by default
-        ordinal_columns=ordinal_columns  # No ordinal columns by default
-    )
-    
-    # For monitoring, we only want features (not target) in the training set
-    # Remove target column from the dataframe used for training set registration
-    feature_df = df.drop(columns=target_columns) if target_columns else df
-    
-    # Update monitoring_meta to exclude target from categorical columns
-    feature_categorical_columns = [col for col in categorical_columns if col not in target_columns]
-    monitoring_meta_features = model.MonitoringMeta(
-        categorical_columns=feature_categorical_columns,
-        timestamp_columns=[],
+        timestamp_columns=timestamp_columns,
         ordinal_columns=ordinal_columns
     )
     
-    print(f"\n   📋 Final training set schema (features only for monitoring):")
-    print(f"   - Feature columns: {list(feature_df.columns)}")
-    print(f"   - Categorical features: {feature_categorical_columns}")
+    # Auto-detect key columns (event_id, id, etc.)
+    auto_key_columns = key_columns or []
+    if not auto_key_columns:
+        for col in df.columns:
+            if 'event_id' in col.lower() or col.lower() == 'id':
+                auto_key_columns.append(col)
+    
+    # Include ALL columns for training set registration (including target and monitoring columns)
+    # This matches the example-register-training.py approach
+    print(f"\n   📋 Final training set schema (all columns for comprehensive monitoring):")
+    print(f"   - All columns: {list(df.columns)}")
+    print(f"   - Target columns: {target_columns}")
+    print(f"   - Key columns: {auto_key_columns}")
+    print(f"   - Categorical columns: {categorical_columns}")
+    print(f"   - Timestamp columns: {timestamp_columns}")
+    
+    # Add metadata about the training set
+    meta = {
+        "dataset": "model_monitoring_training_data",
+        "total_records": str(len(df)),
+        "classes": ", ".join([str(c) for c in df[target_columns[0]].unique()]) if target_columns else "unknown",
+        "features": str(len([col for col in df.columns if col not in target_columns])),
+        "description": f"Training data with {len(df.columns)} columns including monitoring metadata",
+        "model_type": model_type
+    }
     
     ts_version = TrainingSetClient.create_training_set_version(
         training_set_name=name,
-        df=feature_df,  # Only features, no target
-        key_columns=key_columns or [],
-        target_columns=[],  # No target columns for monitoring
-        monitoring_meta=monitoring_meta_features
+        df=df,  # Include ALL columns (features, target, and monitoring columns)
+        key_columns=auto_key_columns,
+        target_columns=target_columns,
+        monitoring_meta=monitoring_meta,
+        meta=meta
     )
 
     print(f"✅ Training set registered successfully")

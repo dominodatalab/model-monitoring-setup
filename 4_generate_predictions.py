@@ -261,7 +261,7 @@ class PredictionGenerator:
 
         if gt_uploaded:
             print(f"\n⏰ Wait 1 hour, then run:")
-            print(f"   python upload_ground_truth.py")
+            print(f"   python 5_upload_ground_truth.py")
 
         return 0
 
