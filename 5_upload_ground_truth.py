@@ -303,76 +303,29 @@ class GroundTruthUploader:
             available_columns = self.get_file_columns(file_path)
             print(f"   📋 Available columns for retry: {available_columns}")
             
-            # Handle ground truth variable conflicts
-            if any(v["name"] in conflicts for v in ground_truth_vars):
-                # Try alternative ground truth column names based on actual data structure
-                # Order by most likely match to actual data structure from 4_generate_predictions.py
-                alternative_gt_names = ["target", "actual_class", "true_label", "ground_truth", "actual", "y_true", "label"]
-                found_gt = False
-                for alt_name in alternative_gt_names:
-                    if alt_name not in conflicts and (not available_columns or alt_name in available_columns):
-                        retry_vars.append({
-                            "name": alt_name,
-                            "variableType": "ground_truth", 
-                            "valueType": self.value_type
-                        })
-                        print(f"   💡 Using alternative ground truth column: {alt_name}")
-                        found_gt = True
-                        break
-                
-                if not found_gt:
-                    # If no alternatives work, use the original with a suffix
-                    original_gt = ground_truth_vars[0]["name"] if ground_truth_vars else self.ground_truth_column
-                    retry_vars.append({
-                        "name": f"{original_gt}_v2",
-                        "variableType": "ground_truth",
-                        "valueType": self.value_type
-                    })
-                    print(f"   💡 Using modified ground truth column: {original_gt}_v2")
-            else:
-                # Keep existing ground truth variables
-                retry_vars.extend([v for v in ground_truth_vars if v["name"] not in conflicts])
+            # Handle conflicts by removing conflicting variables, not renaming them
+            print(f"   🔄 Removing conflicting variables: {conflicts}")
             
-            # Handle row identifier conflicts
-            if any(v["name"] in conflicts for v in row_id_vars):
-                # Try alternative row identifier names that exist in the data
-                alternative_id_names = ["prediction_id", "row_id", "record_id", "id", "uuid", "prediction_uuid"]
-                found_id = False
-                for alt_name in alternative_id_names:
-                    if alt_name not in conflicts and (not available_columns or alt_name in available_columns):
-                        retry_vars.append({
-                            "name": alt_name,
-                            "variableType": "row_identifier",
-                            "valueType": "string"
-                        })
-                        print(f"   💡 Using alternative row identifier: {alt_name}")
-                        found_id = True
-                        break
-                
-                if not found_id:
-                    # If no alternatives work, use event_id_v2
-                    retry_vars.append({
-                        "name": "event_id_v2", 
-                        "variableType": "row_identifier",
-                        "valueType": "string"
-                    })
-                    print(f"   💡 Using modified row identifier: event_id_v2")
-            else:
-                # Keep existing row identifier variables
-                retry_vars.extend([v for v in row_id_vars if v["name"] not in conflicts])
+            # Keep only non-conflicting variables
+            non_conflicting_gt_vars = [v for v in ground_truth_vars if v["name"] not in conflicts]
+            non_conflicting_row_id_vars = [v for v in row_id_vars if v["name"] not in conflicts]
             
-            # Ensure we have exactly one ground truth and one row identifier variable
-            gt_count = len([v for v in retry_vars if v.get("variableType") == "ground_truth"])
-            row_id_count = len([v for v in retry_vars if v.get("variableType") == "row_identifier"])
+            # Add non-conflicting variables to retry config
+            retry_vars.extend(non_conflicting_gt_vars)
+            retry_vars.extend(non_conflicting_row_id_vars)
             
-            if gt_count == 1 and row_id_count == 1:
+            # If we have variables left, try with them
+            if retry_vars:
                 new_config["variables"] = retry_vars
-                print(f"   🔄 Retrying with {len(retry_vars)} variables (alternative names)")
+                print(f"   🔄 Retrying with {len(retry_vars)} non-conflicting variables")
+                for var in retry_vars:
+                    print(f"      - {var['name']} ({var['variableType']})")
                 return self.upload_config_simple(new_config, file_path)
             else:
-                print(f"   ❌ Cannot create valid configuration - need exactly 1 ground truth and 1 row identifier")
-                print(f"      Found: {gt_count} ground truth, {row_id_count} row identifier variables")
-                return False
+                # If all variables conflict, try with no variables (dataset only)
+                print(f"   💡 All variables conflict - trying with dataset registration only (no variable mappings)")
+                new_config["variables"] = []
+                return self.upload_config_simple(new_config, file_path)
         else:
             print("   ❌ Could not parse variable conflicts from error message")
             return False
