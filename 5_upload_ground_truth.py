@@ -46,6 +46,10 @@ class GroundTruthUploader:
         self.value_type = "numerical" if is_regression else "categorical"
         self.datasource_type = datasource_type
         self.force_reregister = force_reregister
+        
+        # Track retry attempts to prevent infinite loops
+        self.retry_count = 0
+        self.max_retries = 3
 
         print(f"🔗 Connecting to: {self.config.domino_base_url}")
         print(f"📊 Model Monitor ID: {self.config.model_monitor_id}")
@@ -106,6 +110,32 @@ class GroundTruthUploader:
             print(f"   ❌ Error deleting dataset {dataset_id}: {e}")
             return False
 
+    def get_file_columns(self, file_path):
+        """Get available columns from the data file for validation"""
+        try:
+            import pandas as pd
+            
+            # Check if this is a remote path (starts with data source path patterns)
+            if file_path.startswith('ground_truth/') or file_path.startswith('s3://') or '/' in file_path:
+                # For remote files, return columns that are actually created by 4_generate_predictions.py
+                print(f"   📡 Remote file detected, using actual ground truth file structure")
+                return ["event_id", "target", "timestamp"]
+            
+            # Try to read local file
+            if file_path.endswith('.csv'):
+                df = pd.read_csv(file_path, nrows=1)
+            elif file_path.endswith('.parquet'):
+                df = pd.read_parquet(file_path)
+                df = df.head(1)
+            else:
+                return ["event_id", "target", "timestamp"]  # Default fallback matching actual data
+                
+            return list(df.columns)
+        except Exception as e:
+            print(f"   ⚠️  Could not read file columns from {file_path}: {e}")
+            # Return actual ground truth columns as fallback
+            return ["event_id", "target", "timestamp"]
+
     def create_config(self, file_path):
         """
         Create ground truth configuration payload
@@ -117,6 +147,32 @@ class GroundTruthUploader:
         filename = Path(file_path).name
         timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
         dataset_name = f"ground_truth_{self.config.model_monitor_id}_{filename.replace('.csv', '')}_{timestamp}"
+        
+        # Get available columns from the file
+        available_columns = self.get_file_columns(file_path)
+        print(f"   📋 Available columns in data: {available_columns}")
+        
+        # Choose ground truth column name based on what's available
+        gt_column = self.ground_truth_column
+        if available_columns:
+            # Use actual columns from ground truth data
+            if "target" in available_columns:
+                gt_column = "target"
+            elif self.ground_truth_column in available_columns:
+                gt_column = self.ground_truth_column
+            else:
+                gt_column = self.ground_truth_column  # fallback
+            print(f"   🎯 Using ground truth column: {gt_column}")
+        
+        # Choose row identifier column
+        row_id_column = "event_id"
+        if available_columns:
+            if "event_id" in available_columns:
+                row_id_column = "event_id"
+            else:
+                # Keep event_id as default since it's what our prediction capture uses
+                row_id_column = "event_id"
+            print(f"   🔑 Using row identifier column: {row_id_column}")
 
         return {
             "datasetDetails": {
@@ -131,52 +187,248 @@ class GroundTruthUploader:
             },
             "variables": [
                 {
-                    "name": "event_id",
+                    "name": row_id_column,
                     "variableType": "row_identifier",
                     "valueType": "string"
                 },
                 {
-                    "name": self.ground_truth_column,
+                    "name": gt_column,
                     "variableType": "ground_truth",
                     "valueType": self.value_type
                 }
             ]
         }
 
+    def create_unique_config(self, original_config, file_path, removed_variables):
+        """Create a new config with unique name to avoid conflicts"""
+        import uuid
+        import copy
+        
+        # Create deep copy of original config
+        new_config = copy.deepcopy(original_config)
+        
+        # Generate unique suffix
+        unique_id = str(uuid.uuid4())[:8]
+        timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
+        
+        # Get original name and create new unique name
+        original_name = original_config["datasetDetails"]["name"]
+        
+        # Add retry info to the name
+        retry_info = ""
+        if removed_variables:
+            retry_info = f"_retry_no_{'-'.join(removed_variables).replace(' ', '')}"
+        else:
+            retry_info = "_retry_no_vars"
+        
+        new_name = f"{original_name}{retry_info}_{unique_id}"
+        
+        # Update the dataset name
+        new_config["datasetDetails"]["name"] = new_name
+        
+        print(f"   📝 Created unique config name: {new_name}")
+        return new_config
+
     def retry_with_variable_removal(self, config, file_path, error_message):
         """Retry upload by removing variables mentioned in error message"""
         import re
         
-        # Extract variable names from error message
-        variable_pattern = r"Variable\(s\) with name \['([^']+)'\]"
-        matches = re.findall(variable_pattern, error_message)
-        
-        if matches:
-            print(f"   🔄 Removing already configured variables: {matches}")
-            # Remove the mentioned variables
-            remaining_vars = [var for var in config.get("variables", []) 
-                            if var["name"] not in matches]
+        # Check retry limit
+        self.retry_count += 1
+        if self.retry_count > self.max_retries:
+            print(f"   ❌ Maximum retries ({self.max_retries}) exceeded")
+            print(f"   🔄 Final attempt: trying with no variables (datasetDetails only)")
             
-            if remaining_vars:
-                # Try with remaining variables
-                new_config = config.copy()
-                new_config["variables"] = remaining_vars
-                print(f"   🔄 Retrying with {len(remaining_vars)} variables")
+            # Final fallback: try with no variables
+            new_config = self.create_unique_config(config, file_path, ["final_attempt"])
+            new_config.pop("variables", None)  # Remove all variables
+            
+            print(f"   📤 Final upload: {new_config['datasetDetails']['name']}")
+            print(f"   📊 Variables: 0 configured (datasetDetails only)")
+            
+            # Print JSON configuration for final attempt debugging
+            import json
+            print(f"   📄 Final Attempt Configuration JSON:")
+            print(json.dumps(new_config, indent=2))
+            
+            try:
+                url = f"{self.base_url}/model/{self.config.model_monitor_id}/register-dataset/ground_truth"
+                response = requests.put(url, headers=self.headers, json=new_config, timeout=60)
+                
+                if response.status_code in [200, 201]:
+                    print(f"✅ Registered with no variables: {file_path}")
+                    return True
+                else:
+                    print(f"❌ Final attempt failed: {response.status_code} - {response.text}")
+                    return False
+            except Exception as e:
+                print(f"❌ Final attempt error: {e}")
+                return False
+        
+        print(f"   🔍 Retry {self.retry_count}/{self.max_retries} - Analyzing error: {error_message}")
+        
+        # Extract variable names from error message - handle multiple patterns
+        conflicts = []
+        
+        # Pattern 1: "Variable(s) with name ['target', 'event_id'] is/are already configured"
+        pattern1 = r"Variable\(s\) with name \[([^\]]+)\]"
+        match1 = re.search(pattern1, error_message)
+        if match1:
+            # Extract individual variable names from the list
+            var_list = match1.group(1)
+            # Handle both quoted and unquoted variable names
+            var_names = re.findall(r"'([^']+)'", var_list)
+            if not var_names:
+                # Try without quotes
+                var_names = [name.strip() for name in var_list.split(',')]
+            conflicts.extend(var_names)
+        
+        # Pattern 2: Single variable mentions
+        pattern2 = r"Variable '([^']+)' (?:is already|already)"
+        conflicts.extend(re.findall(pattern2, error_message, re.IGNORECASE))
+        
+        if conflicts:
+            print(f"   🔄 Found conflicting variables: {conflicts}")
+            
+            # Check which types of variables we have
+            original_vars = config.get("variables", [])
+            ground_truth_vars = [v for v in original_vars if v.get("variableType") == "ground_truth"]
+            row_id_vars = [v for v in original_vars if v.get("variableType") == "row_identifier"]
+            
+            # Strategy 1: Try to use different column names for conflicting variables
+            new_config = self.create_unique_config(config, file_path, conflicts)
+            retry_vars = []
+            
+            # Get available columns from the data file
+            available_columns = self.get_file_columns(file_path)
+            print(f"   📋 Available columns for retry: {available_columns}")
+            
+            # Handle ground truth variable conflicts
+            if any(v["name"] in conflicts for v in ground_truth_vars):
+                # Try alternative ground truth column names based on actual data structure
+                # Order by most likely match to actual data structure from 4_generate_predictions.py
+                alternative_gt_names = ["target", "actual_class", "true_label", "ground_truth", "actual", "y_true", "label"]
+                found_gt = False
+                for alt_name in alternative_gt_names:
+                    if alt_name not in conflicts and (not available_columns or alt_name in available_columns):
+                        retry_vars.append({
+                            "name": alt_name,
+                            "variableType": "ground_truth", 
+                            "valueType": self.value_type
+                        })
+                        print(f"   💡 Using alternative ground truth column: {alt_name}")
+                        found_gt = True
+                        break
+                
+                if not found_gt:
+                    # If no alternatives work, use the original with a suffix
+                    original_gt = ground_truth_vars[0]["name"] if ground_truth_vars else self.ground_truth_column
+                    retry_vars.append({
+                        "name": f"{original_gt}_v2",
+                        "variableType": "ground_truth",
+                        "valueType": self.value_type
+                    })
+                    print(f"   💡 Using modified ground truth column: {original_gt}_v2")
+            else:
+                # Keep existing ground truth variables
+                retry_vars.extend([v for v in ground_truth_vars if v["name"] not in conflicts])
+            
+            # Handle row identifier conflicts
+            if any(v["name"] in conflicts for v in row_id_vars):
+                # Try alternative row identifier names that exist in the data
+                alternative_id_names = ["prediction_id", "row_id", "record_id", "id", "uuid", "prediction_uuid"]
+                found_id = False
+                for alt_name in alternative_id_names:
+                    if alt_name not in conflicts and (not available_columns or alt_name in available_columns):
+                        retry_vars.append({
+                            "name": alt_name,
+                            "variableType": "row_identifier",
+                            "valueType": "string"
+                        })
+                        print(f"   💡 Using alternative row identifier: {alt_name}")
+                        found_id = True
+                        break
+                
+                if not found_id:
+                    # If no alternatives work, use event_id_v2
+                    retry_vars.append({
+                        "name": "event_id_v2", 
+                        "variableType": "row_identifier",
+                        "valueType": "string"
+                    })
+                    print(f"   💡 Using modified row identifier: event_id_v2")
+            else:
+                # Keep existing row identifier variables
+                retry_vars.extend([v for v in row_id_vars if v["name"] not in conflicts])
+            
+            # Ensure we have exactly one ground truth and one row identifier variable
+            gt_count = len([v for v in retry_vars if v.get("variableType") == "ground_truth"])
+            row_id_count = len([v for v in retry_vars if v.get("variableType") == "row_identifier"])
+            
+            if gt_count == 1 and row_id_count == 1:
+                new_config["variables"] = retry_vars
+                print(f"   🔄 Retrying with {len(retry_vars)} variables (alternative names)")
                 return self.upload_config_simple(new_config, file_path)
             else:
-                # Try without any variables
-                print("   🔄 Retrying without variable definitions")
-                config_no_vars = {"datasetDetails": config["datasetDetails"]}
-                return self.upload_config_simple(config_no_vars, file_path)
+                print(f"   ❌ Cannot create valid configuration - need exactly 1 ground truth and 1 row identifier")
+                print(f"      Found: {gt_count} ground truth, {row_id_count} row identifier variables")
+                return False
         else:
-            # Try without any variables as fallback
-            print("   🔄 Retrying without variable definitions")
-            config_no_vars = {"datasetDetails": config["datasetDetails"]}
-            return self.upload_config_simple(config_no_vars, file_path)
+            print("   ❌ Could not parse variable conflicts from error message")
+            return False
+
+    def retry_without_row_identifier(self, config, file_path):
+        """Retry upload with only ground truth variable (no row identifier)"""
+        # Check retry limit
+        self.retry_count += 1
+        if self.retry_count > self.max_retries:
+            print(f"   ❌ Maximum retries ({self.max_retries}) exceeded - stopping")
+            return False
+            
+        print(f"   🔄 Retry {self.retry_count}/{self.max_retries} - Retrying with ground truth variable only (no row identifier)")
+        
+        # Create new config with unique name and only ground truth variable
+        new_config = self.create_unique_config(config, file_path, ["row_identifier"])
+        
+        # Keep only ground truth variables
+        original_vars = config.get("variables", [])
+        ground_truth_vars = [v for v in original_vars if v.get("variableType") == "ground_truth"]
+        
+        if ground_truth_vars:
+            new_config["variables"] = ground_truth_vars
+            print(f"   🎯 Using only ground truth variable: {ground_truth_vars[0]['name']}")
+        else:
+            # Create a basic ground truth variable
+            available_columns = self.get_file_columns(file_path)
+            # Use 'target' as primary choice since that's what 4_generate_predictions.py creates
+            if "target" in available_columns:
+                gt_column = "target"
+            elif "actual_class" in available_columns:
+                gt_column = "actual_class"  
+            else:
+                gt_column = self.ground_truth_column
+            new_config["variables"] = [{
+                "name": gt_column,
+                "variableType": "ground_truth",
+                "valueType": self.value_type
+            }]
+            print(f"   🎯 Created ground truth variable: {gt_column}")
+        
+        return self.upload_config_simple(new_config, file_path)
 
     def upload_config_simple(self, config, file_path):
         """Upload configuration without complex error handling (for retries)"""
         url = f"{self.base_url}/model/{self.config.model_monitor_id}/register-dataset/ground_truth"
+        
+        print(f"   📤 Retry upload: {config['datasetDetails']['name']}")
+        print(f"   📊 Variables: {len(config.get('variables', []))} configured")
+        for var in config.get('variables', []):
+            print(f"      - {var['name']} ({var['variableType']})")
+        
+        # Print JSON configuration for debugging retries
+        import json
+        print(f"   📄 Retry Configuration JSON:")
+        print(json.dumps(config, indent=2))
         
         try:
             response = requests.put(url, headers=self.headers, json=config, timeout=60)
@@ -187,6 +439,16 @@ class GroundTruthUploader:
             elif response.status_code == 409:
                 print(f"ℹ️  Already registered: {file_path}")
                 return True
+            elif response.status_code == 400:
+                if "can be only 1 row_identifier" in response.text.lower():
+                    print(f"   ℹ️  Row identifier conflict in retry - trying without row identifier")
+                    return self.retry_without_row_identifier(config, file_path)
+                elif "already configured" in response.text.lower():
+                    print(f"   ℹ️  Variables still conflicting in retry - trying with different names")
+                    return self.retry_with_variable_removal(config, file_path, response.text)
+                else:
+                    print(f"❌ Retry failed: {response.status_code} - {response.text}")
+                    return False
             else:
                 print(f"❌ Retry failed: {response.status_code} - {response.text}")
                 return False
@@ -201,6 +463,15 @@ class GroundTruthUploader:
         file_path = config["datasetDetails"]["datasetConfig"]["path"]
 
         print(f"📤 Uploading: {file_path}")
+        print(f"   📋 Dataset name: {config['datasetDetails']['name']}")
+        print(f"   📊 Variables: {len(config.get('variables', []))} configured")
+        for var in config.get('variables', []):
+            print(f"      - {var['name']} ({var['variableType']})")
+        
+        # Print JSON configuration for debugging
+        import json
+        print(f"   📄 Configuration JSON:")
+        print(json.dumps(config, indent=2))
 
         try:
             response = requests.put(url, headers=self.headers, json=config, timeout=60)
@@ -223,8 +494,11 @@ class GroundTruthUploader:
                         return self.retry_with_variable_removal(config, file_path, response.text)
                     elif "ground truth variable" in response.text.lower():
                         print("   💡 Issue: Ground truth variable configuration problem")
-                        print("      Check that 'actual_class' column exists in the ground truth CSV")
+                        print("      Check that 'target' column exists in the ground truth CSV")
                         print("      and that variable types are correctly defined")
+                    elif "can be only 1 row_identifier" in response.text.lower():
+                        print("   ℹ️  Row identifier already exists globally - retrying without row identifier")
+                        return self.retry_without_row_identifier(config, file_path)
                     elif "row_identifier" in response.text.lower():
                         print("   💡 Issue: Row identifier configuration problem")
                         print("      Check that 'event_id' column exists and uniquely identifies rows")
@@ -256,6 +530,9 @@ class GroundTruthUploader:
         print(f"\n🚀 Starting upload ({len(file_paths)} files)...")
 
         for file_path in file_paths:
+            # Reset retry count for each file
+            self.retry_count = 0
+            
             config = self.create_config(file_path)
             if self.upload_config(config):
                 successful += 1
