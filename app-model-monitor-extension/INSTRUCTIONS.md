@@ -58,9 +58,6 @@ Models must have:
 3. TrainingSet configured for drift detection
 4. Drift/quality checks scheduled
 
-### API Requirements
-- All timestamps must be **Unix seconds** (not milliseconds, not ISO strings)
-- Ground truth files must be in configured data source
 
 ## Troubleshooting
 

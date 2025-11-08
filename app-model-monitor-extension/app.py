@@ -190,31 +190,96 @@ def get_status_badge(status: str) -> str:
 
 def load_prediction_data(start_date: datetime, end_date: datetime, model_id: str = None) -> pd.DataFrame:
     """
-    Load prediction metrics from Model Monitoring API.
+    Load prediction data for custom metric computation.
 
-    Note: The Model Monitoring API provides aggregated drift/quality metrics,
-    not raw prediction data. Use this for analyzing trends in pre-computed metrics.
+    This function attempts to load data in the following priority:
+    1. Ground truth data from model-monitor-storage data source (contains actual predictions)
+    2. Training data from local filesystem as fallback
 
-    For custom metric computation on raw data, use training data as a proxy.
+    Args:
+        start_date: Start of date range
+        end_date: End of date range
+        model_id: Model monitor ID (optional, used to filter ground truth data)
+
+    Returns:
+        DataFrame with prediction data
     """
     try:
-        # For Custom Metrics: Use training data as proxy since API doesn't expose raw predictions
-        # This is a limitation of the Model Monitoring API v2
-        st.info("📊 Loading training data as proxy for prediction data (API limitation)")
+        # Try to load ground truth data from data source first
+        # Ground truth files contain actual prediction data with labels
+        try:
+            from domino.data_sources import DataSourceClient
+            import io
 
-        data_path = Path('/mnt/data/transformed_cc_transactions.csv')
-        if not data_path.exists():
-            # Try alternative paths
-            alt_paths = [
-                Path('/mnt/artifacts/transformed_cc_transactions.csv'),
-                Path('/domino/datasets/local/Fraud-Detection-Workshop/transformed_cc_transactions.csv')
-            ]
-            for alt_path in alt_paths:
-                if alt_path.exists():
-                    data_path = alt_path
-                    break
+            st.info("📊 Loading ground truth data from model-monitor-storage")
 
-        if not data_path.exists():
+            object_store = DataSourceClient().get_datasource('model-monitor-storage')
+            objects = object_store.list_objects()
+
+            # Find ground truth files within date range
+            ground_truth_files = []
+            for obj in objects:
+                key = obj.key if hasattr(obj, 'key') else str(obj)
+                if 'ground_truth' in key and key.endswith('.csv'):
+                    # Filter by model_id if provided
+                    if model_id and model_id not in key:
+                        continue
+                    ground_truth_files.append(key)
+
+            if ground_truth_files:
+                # Load and combine all ground truth files
+                dfs = []
+                for file_key in ground_truth_files:
+                    try:
+                        file_obj = io.BytesIO()
+                        object_store.download_fileobj(file_key, file_obj)
+                        file_obj.seek(0)
+                        df_temp = pd.read_csv(file_obj)
+                        dfs.append(df_temp)
+                    except Exception as e:
+                        st.warning(f"Could not load {file_key}: {e}")
+
+                if dfs:
+                    df = pd.concat(dfs, ignore_index=True)
+
+                    # Filter by date range if timestamp column exists
+                    if 'timestamp' in df.columns:
+                        df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
+                        # Make start_date and end_date timezone-aware
+                        start_date_tz = pd.Timestamp(start_date, tz='UTC')
+                        end_date_tz = pd.Timestamp(end_date, tz='UTC')
+                        df = df[(df['timestamp'] >= start_date_tz) & (df['timestamp'] <= end_date_tz)]
+
+                    st.caption(f"✅ Loaded {len(df):,} ground truth records from {len(dfs)} file(s)")
+                    return df
+
+        except ImportError:
+            st.warning("⚠️ DataSourceClient not available, falling back to training data")
+        except Exception as e:
+            st.warning(f"⚠️ Could not load from data source: {e}, falling back to training data")
+
+        # Fallback: Use training data as proxy
+        st.info("📊 Loading training data as proxy for prediction data")
+
+        # Try multiple common training data file names and locations
+        possible_paths = [
+            Path('/mnt/data/transformed_cc_transactions.csv'),
+            Path('/mnt/artifacts/transformed_cc_transactions.csv'),
+            Path('/domino/datasets/local/Fraud-Detection-Workshop/transformed_cc_transactions.csv'),
+            Path('/mnt/artifacts/training_data.csv'),
+            Path('/mnt/data/training_data.csv'),
+            Path('/mnt/code/training_data.csv'),
+            Path('/mnt/artifacts/test_data.csv'),
+            Path('/mnt/data/test_data.csv')
+        ]
+
+        data_path = None
+        for path in possible_paths:
+            if path.exists():
+                data_path = path
+                break
+
+        if data_path is None:
             raise FileNotFoundError("Training data not found. Cannot simulate prediction data.")
 
         df = pd.read_csv(data_path)
@@ -225,7 +290,7 @@ def load_prediction_data(start_date: datetime, end_date: datetime, model_id: str
         random_seed = int(start_date.timestamp()) % 10000
         sampled_df = df.sample(n=sample_size, random_state=random_seed)
 
-        st.caption(f"⚠️ Using {len(sampled_df):,} training samples as proxy (seed: {random_seed})")
+        st.caption(f"⚠️ Using {len(sampled_df):,} training samples from {data_path.name} as proxy (seed: {random_seed})")
 
         return sampled_df
 
@@ -1180,11 +1245,13 @@ elif page == "Custom Metrics":
                             # Load baseline and current data
                             baseline_data = load_prediction_data(
                                 datetime.combine(baseline_start, datetime.min.time()),
-                                datetime.combine(baseline_end, datetime.max.time())
+                                datetime.combine(baseline_end, datetime.max.time()),
+                                model_id=selected_model_id
                             )
                             current_data = load_prediction_data(
                                 datetime.combine(current_start, datetime.min.time()),
-                                datetime.combine(current_end, datetime.max.time())
+                                datetime.combine(current_end, datetime.max.time()),
+                                model_id=selected_model_id
                             )
 
                             if baseline_data.empty or current_data.empty:

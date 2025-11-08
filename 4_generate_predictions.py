@@ -172,7 +172,7 @@ class PredictionGenerator:
                 self.predictions.append({
                     'event_id': result.get('event_id', f'pred_{i}'),
                     'timestamp': result.get('timestamp', datetime.now(timezone.utc).isoformat()),
-                    'target': actual_class,  # CUSTOMIZE: Column name must match your training data
+                    'actual_target': actual_class,  # Ground truth uses 'actual_target' column name
                     'predicted_class': result.get('predicted_class'),
                     'confidence': result.get('confidence_score')
                 })
@@ -213,12 +213,12 @@ class PredictionGenerator:
             for pred in self.predictions:
                 records.append({
                     'event_id': pred['event_id'],
-                    'target': pred['target'],  # Changed from 'actual_class' to 'target'
+                    'actual_target': pred['actual_target'],  # Use 'actual_target' for ground truth
                     'timestamp': pred['timestamp']
                 })
 
             csv_buffer = io.StringIO()
-            writer = csv.DictWriter(csv_buffer, fieldnames=['event_id', 'target', 'timestamp'])
+            writer = csv.DictWriter(csv_buffer, fieldnames=['event_id', 'actual_target', 'timestamp'])
             writer.writeheader()
             writer.writerows(records)
 

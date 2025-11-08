@@ -27,20 +27,20 @@ from config_loader import get_config
 class GroundTruthUploader:
     """
     Upload ground truth configurations to Model Monitor
-    
+
     CUSTOMIZE: Update the class for your specific use case:
-    - Modify ground_truth_column_name if different from 'target'
+    - Modify ground_truth_column_name if different from 'actual_target'
     - Change is_regression=True for numerical targets
     """
 
-    def __init__(self, ground_truth_column_name="target", is_regression=False, datasource_type="s3", force_reregister=False):
+    def __init__(self, ground_truth_column_name="actual_target", is_regression=False, datasource_type="s3", force_reregister=False):
         self.config = get_config()
         self.base_url = self.config.model_monitor_api_url
         self.headers = {
             "Content-Type": "application/json",
             "X-Domino-Api-Key": self.config.domino_api_key
         }
-        
+
         # CUSTOMIZE: Set these based on your model type
         self.ground_truth_column = ground_truth_column_name
         self.value_type = "numerical" if is_regression else "categorical"
@@ -119,7 +119,7 @@ class GroundTruthUploader:
             if file_path.startswith('ground_truth/') or file_path.startswith('s3://') or '/' in file_path:
                 # For remote files, return columns that are actually created by 4_generate_predictions.py
                 print(f"   📡 Remote file detected, using actual ground truth file structure")
-                return ["event_id", "target", "timestamp"]
+                return ["event_id", "actual_target", "timestamp"]
             
             # Try to read local file
             if file_path.endswith('.csv'):
@@ -128,13 +128,13 @@ class GroundTruthUploader:
                 df = pd.read_parquet(file_path)
                 df = df.head(1)
             else:
-                return ["event_id", "target", "timestamp"]  # Default fallback matching actual data
-                
+                return ["event_id", "actual_target", "timestamp"]  # Default fallback matching actual data
+
             return list(df.columns)
         except Exception as e:
             print(f"   ⚠️  Could not read file columns from {file_path}: {e}")
             # Return actual ground truth columns as fallback
-            return ["event_id", "target", "timestamp"]
+            return ["event_id", "actual_target", "timestamp"]
 
     def create_config(self, file_path):
         """
@@ -155,11 +155,13 @@ class GroundTruthUploader:
         # Choose ground truth column name based on what's available
         gt_column = self.ground_truth_column
         if available_columns:
-            # Use actual columns from ground truth data
-            if "target" in available_columns:
-                gt_column = "target"
+            # Use actual columns from ground truth data (prefer actual_target)
+            if "actual_target" in available_columns:
+                gt_column = "actual_target"
             elif self.ground_truth_column in available_columns:
                 gt_column = self.ground_truth_column
+            elif "target" in available_columns:
+                gt_column = "target"
             else:
                 gt_column = self.ground_truth_column  # fallback
             print(f"   🎯 Using ground truth column: {gt_column}")
@@ -194,7 +196,8 @@ class GroundTruthUploader:
                 {
                     "name": gt_column,
                     "variableType": "ground_truth",
-                    "valueType": self.value_type
+                    "valueType": self.value_type,
+                    "forPredictionOutput": "target"  # Map ground truth to prediction output column
                 }
             ]
         }
@@ -303,29 +306,89 @@ class GroundTruthUploader:
             available_columns = self.get_file_columns(file_path)
             print(f"   📋 Available columns for retry: {available_columns}")
             
-            # Handle conflicts by removing conflicting variables, not renaming them
-            print(f"   🔄 Removing conflicting variables: {conflicts}")
+            # Handle conflicts by removing variables one at a time, starting with event_id
+            print(f"   🔄 Found conflicting variables: {conflicts}")
             
-            # Keep only non-conflicting variables
-            non_conflicting_gt_vars = [v for v in ground_truth_vars if v["name"] not in conflicts]
-            non_conflicting_row_id_vars = [v for v in row_id_vars if v["name"] not in conflicts]
+            # Priority order for removal: event_id first, then other row identifiers, then ground truth variables
+            removal_order = ["event_id", "prediction_id", "row_id", "record_id", "id", "uuid", "target", "actual_class", "ground_truth"]
             
-            # Add non-conflicting variables to retry config
-            retry_vars.extend(non_conflicting_gt_vars)
-            retry_vars.extend(non_conflicting_row_id_vars)
+            # Find the first conflicting variable in our removal order
+            variable_to_remove = None
+            for var_name in removal_order:
+                if var_name in conflicts:
+                    variable_to_remove = var_name
+                    break
             
-            # If we have variables left, try with them
+            if not variable_to_remove:
+                # If no match in priority list, remove first conflict
+                variable_to_remove = conflicts[0]
+            
+            print(f"   🔄 Removing conflicting variable: {variable_to_remove}")
+            
+            # Keep all variables except the one we're removing
+            retry_vars = []
+            
+            # Add ground truth variables (except the one being removed)
+            for var in ground_truth_vars:
+                if var["name"] != variable_to_remove:
+                    retry_vars.append(var)
+            
+            # Add row identifier variables (except the one being removed)
+            for var in row_id_vars:
+                if var["name"] != variable_to_remove:
+                    retry_vars.append(var)
+            
+            # Check if we still have ground truth variables after removal
+            has_ground_truth = any(v.get("variableType") == "ground_truth" for v in retry_vars)
+
+            # Only add back ground truth if we still have other variables to work with
+            if not has_ground_truth and retry_vars:
+                # Add actual_target ground truth variable if we have other variables but no ground truth
+                retry_vars.append({
+                    "name": "actual_target",
+                    "variableType": "ground_truth",
+                    "valueType": self.value_type,
+                    "forPredictionOutput": "target"
+                })
+                print(f"   💡 Added actual_target ground truth variable to ensure minimum requirement")
+            
             if retry_vars:
                 new_config["variables"] = retry_vars
-                print(f"   🔄 Retrying with {len(retry_vars)} non-conflicting variables")
+                print(f"   🔄 Retrying with {len(retry_vars)} variables (removed: {variable_to_remove})")
                 for var in retry_vars:
                     print(f"      - {var['name']} ({var['variableType']})")
                 return self.upload_config_simple(new_config, file_path)
             else:
-                # If all variables conflict, try with no variables (dataset only)
-                print(f"   💡 All variables conflict - trying with dataset registration only (no variable mappings)")
-                new_config["variables"] = []
-                return self.upload_config_simple(new_config, file_path)
+                # After removing variables one at a time, try with no variables
+                print(f"   💡 No variables left after removal - trying with no variables (fresh attempt)")
+                # Create a completely new config with unique name and no variables
+                no_vars_config = self.create_unique_config(config, file_path, ["all_variables"])
+                if "variables" in no_vars_config:
+                    del no_vars_config["variables"]
+                
+                print(f"   📤 No-variables attempt: {no_vars_config['datasetDetails']['name']}")
+                print(f"   📊 Variables: 0 configured (dataset registration only)")
+                
+                # Print JSON for debugging
+                import json
+                print(f"   📄 No-Variables Configuration JSON:")
+                print(json.dumps(no_vars_config, indent=2))
+                
+                url = f"{self.base_url}/model/{self.config.model_monitor_id}/register-dataset/ground_truth"
+                try:
+                    response = requests.put(url, headers=self.headers, json=no_vars_config, timeout=60)
+                    if response.status_code in [200, 201]:
+                        print(f"✅ Registered with no variables: {file_path}")
+                        return True
+                    elif response.status_code == 409:
+                        print(f"ℹ️  Already registered with no variables: {file_path}")  
+                        return True
+                    else:
+                        print(f"❌ No-variables attempt failed: {response.status_code} - {response.text}")
+                        return False
+                except Exception as e:
+                    print(f"❌ No-variables attempt error: {e}")
+                    return False
         else:
             print("   ❌ Could not parse variable conflicts from error message")
             return False
@@ -353,17 +416,20 @@ class GroundTruthUploader:
         else:
             # Create a basic ground truth variable
             available_columns = self.get_file_columns(file_path)
-            # Use 'target' as primary choice since that's what 4_generate_predictions.py creates
-            if "target" in available_columns:
+            # Use 'actual_target' as primary choice since that's what 4_generate_predictions.py creates
+            if "actual_target" in available_columns:
+                gt_column = "actual_target"
+            elif "target" in available_columns:
                 gt_column = "target"
             elif "actual_class" in available_columns:
-                gt_column = "actual_class"  
+                gt_column = "actual_class"
             else:
                 gt_column = self.ground_truth_column
             new_config["variables"] = [{
                 "name": gt_column,
                 "variableType": "ground_truth",
-                "valueType": self.value_type
+                "valueType": self.value_type,
+                "forPredictionOutput": "target"
             }]
             print(f"   🎯 Created ground truth variable: {gt_column}")
         
@@ -447,7 +513,7 @@ class GroundTruthUploader:
                         return self.retry_with_variable_removal(config, file_path, response.text)
                     elif "ground truth variable" in response.text.lower():
                         print("   💡 Issue: Ground truth variable configuration problem")
-                        print("      Check that 'target' column exists in the ground truth CSV")
+                        print("      Check that 'actual_target' column exists in the ground truth CSV")
                         print("      and that variable types are correctly defined")
                     elif "can be only 1 row_identifier" in response.text.lower():
                         print("   ℹ️  Row identifier already exists globally - retrying without row identifier")
@@ -514,8 +580,8 @@ def main():
     parser.add_argument("--end-date", type=parse_date, help="End date (YYYY-MM-DD)")
     
     # CUSTOMIZE: Add these arguments for your specific model
-    parser.add_argument("--ground-truth-column", default="target", 
-                       help="Ground truth column name (default: target)")
+    parser.add_argument("--ground-truth-column", default="actual_target",
+                       help="Ground truth column name (default: actual_target)")
     parser.add_argument("--regression", action="store_true", 
                        help="Use for regression models (numerical targets)")
     parser.add_argument("--datasource-type", default="s3", 
