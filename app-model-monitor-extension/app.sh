@@ -13,4 +13,4 @@ enableXsrfProtection = false
 address = "0.0.0.0"
 EOF
 
-streamlit run chatbot.py
+streamlit run app.py

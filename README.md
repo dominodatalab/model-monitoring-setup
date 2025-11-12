@@ -2,7 +2,7 @@
 
 Quick setup for Domino Model Monitor with automated prediction capture and ground truth tracking. 
 
-In addition to the scripts needed to set up monitoring, there is an `example` folder that provides a complete working example with a trained Random Forest model and deployment script ready for monitoring setup. There is also an `app-model-monitor-extension` folder which contains a Streamlit dashboard for visualizing model monitoring metrics and comparing models side-by-side. See the INSTRUCTIONS.md files in each folder for detailed usage instructions.
+In addition to the scripts needed to set up monitoring, there is an `example` folder that provides a complete working example with a trained Random Forest model and deployment script ready for monitoring setup. There is also an `app-model-monitor-extension` folder which contains a dashboard for visualizing model monitoring metrics and comparing models side-by-side. See the INSTRUCTIONS.md files in each folder for detailed usage instructions.
 
 ---
 
