@@ -2700,16 +2700,22 @@ elif page == "Custom Metrics":
                                     # Create a temporary Python file that will write the actual script
                                     writer_script = f"""import base64
 from pathlib import Path
+import shutil
 
 content = base64.b64decode('{encoded_content}').decode('utf-8')
 script_dir = Path('artifacts/custom_metrics')
 script_dir.mkdir(parents=True, exist_ok=True)
-script_path = script_dir / '{script_filename}'
 
+# Write the metric job script
+script_path = script_dir / '{script_filename}'
 with open(script_path, 'w') as f:
     f.write(content)
+print(f'✅ Created {{script_path}}')
 
-print(f'Created {{script_path}}')
+# Also save this writer script to artifacts for reference
+writer_path = script_dir / '.tmp_write_{script_filename}'
+shutil.copy(__file__, writer_path)
+print(f'✅ Saved writer script to {{writer_path}}')
 """
 
                                     # Save writer script to a temporary location that will be synced
