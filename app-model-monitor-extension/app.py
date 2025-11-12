@@ -18,7 +18,12 @@ import time
 from pathlib import Path
 
 # Add current directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent))
+app_dir = Path(__file__).parent
+sys.path.insert(0, str(app_dir))
+
+# Change working directory to app directory to ensure relative imports work
+import os
+os.chdir(str(app_dir))
 
 from api_client import ModelMonitoringClient
 import config
