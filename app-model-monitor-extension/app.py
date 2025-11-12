@@ -16,6 +16,7 @@ from typing import List, Dict, Any
 import sys
 import time
 from pathlib import Path
+import os
 
 # Add current directory to path for imports
 app_dir = Path(__file__).parent
