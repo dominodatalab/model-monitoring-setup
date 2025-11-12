@@ -21,10 +21,6 @@ from pathlib import Path
 app_dir = Path(__file__).parent
 sys.path.insert(0, str(app_dir))
 
-# Change working directory to app directory to ensure relative imports work
-import os
-os.chdir(str(app_dir))
-
 from api_client import ModelMonitoringClient
 
 # Configuration (moved from config.py to eliminate import dependency)
@@ -1084,6 +1080,7 @@ elif page == "Custom Metrics":
                                 selected_training_set_name = st.selectbox(
                                     "Select Training Set",
                                     options=list(training_set_options.keys()),
+                                    index=0,
                                     help="Training sets ordered by most recent creation date",
                                     key="training_set_selection"
                                 )
@@ -1115,7 +1112,7 @@ elif page == "Custom Metrics":
                                     
                                     # Confirmation checkbox
                                     training_set_confirmed = st.checkbox(
-                                        f"✅ Use '{selected_training_set.get('name')}' as baseline data",
+                                        f"Use '{selected_training_set.get('name')}' as baseline data",
                                         key="training_set_confirmed",
                                         help="Check this box to confirm using this training set as baseline"
                                     )
