@@ -26,7 +26,15 @@ import os
 os.chdir(str(app_dir))
 
 from api_client import ModelMonitoringClient
-import config
+
+# Configuration (moved from config.py to eliminate import dependency)
+API_HOST = 'https://se-demo.domino.tech'  # External URL required for Model Monitoring v2
+API_KEY = os.environ.get('DOMINO_USER_API_KEY', '')
+DOMINO_PROJECT_OWNER = os.environ.get('DOMINO_PROJECT_OWNER', 'andrea_lowe')
+DOMINO_PROJECT_NAME = os.environ.get('DOMINO_PROJECT_NAME', 'model-monitoring-tutorial')
+DOMINO_PROJECT_ID = os.environ.get('DOMINO_PROJECT_ID', '')
+DOMINO_PROJECT = f"{DOMINO_PROJECT_OWNER}/{DOMINO_PROJECT_NAME}"
+DOMINO_SDK_HOST = API_HOST
 
 # Try to import domino for custom metrics
 try:
@@ -167,8 +175,8 @@ def get_api_client(_cache_buster: str = "v3"):
     """Initialize and cache the API client."""
     try:
         return ModelMonitoringClient(
-            api_host=config.API_HOST,
-            api_key=config.API_KEY
+            api_host=API_HOST,
+            api_key=API_KEY
         )
     except Exception as e:
         st.error(f"Failed to initialize API client: {e}")
@@ -866,7 +874,7 @@ elif page == "Custom Metrics":
     st.markdown("Define and compute custom monitoring metrics for your models.")
     
     # Add project-specific note
-    st.info(f"📁 **Project Context**: Only models associated with project `{config.DOMINO_PROJECT_OWNER}/{config.DOMINO_PROJECT_NAME}` (ID: `{config.DOMINO_PROJECT_ID}`) are available for custom metrics.")
+    st.info(f"📁 **Project Context**: Only models associated with project `{DOMINO_PROJECT_OWNER}/{DOMINO_PROJECT_NAME}` (ID: `{DOMINO_PROJECT_ID}`) are available for custom metrics.")
 
     try:
         # Fetch available models and filter by prediction data correlation
@@ -1788,9 +1796,9 @@ elif page == "Custom Metrics":
                             try:
                                 # Initialize Domino client (requires project in format "owner/project-name")
                                 d = domino.Domino(
-                                    config.DOMINO_PROJECT,
-                                    api_key=config.API_KEY,
-                                    host=config.DOMINO_SDK_HOST
+                                    DOMINO_PROJECT,
+                                    api_key=API_KEY,
+                                    host=DOMINO_SDK_HOST
                                 )
                                 metrics_client = d.custom_metrics_client()
 
@@ -1930,9 +1938,9 @@ elif page == "Custom Metrics":
                         with st.spinner("Fetching metric history from Domino..."):
                             # Initialize Domino client
                             d = domino.Domino(
-                                config.DOMINO_PROJECT,
-                                api_key=config.API_KEY,
-                                host=config.DOMINO_SDK_HOST
+                                DOMINO_PROJECT,
+                                api_key=API_KEY,
+                                host=DOMINO_SDK_HOST
                             )
                             metrics_client = d.custom_metrics_client()
 
