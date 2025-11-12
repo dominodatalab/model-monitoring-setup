@@ -2689,38 +2689,92 @@ elif page == "Custom Metrics":
                                         }
                                     )
 
-                                    # Save script to artifacts/custom_metrics
+                                    # Use Domino API to start a job that creates the script file
                                     script_filename = f"{params.get('metric_name', metric_name)}_job.py"
-                                    script_dir = Path("/mnt/artifacts/custom_metrics")
-                                    script_dir.mkdir(parents=True, exist_ok=True)
-                                    script_path = script_dir / script_filename
-                                    
-                                    with open(script_path, 'w') as f:
-                                        f.write(script_content)
-                                    
-                                    st.success(f"✅ Job script created successfully!")
-                                    st.info(f"📍 **Script Location:** `/mnt/artifacts/custom_metrics/{script_filename}`")
-                                    
-                                    # Instructions for setting up scheduled job
-                                    with st.expander("📚 How to Set Up Scheduled Job", expanded=True):
-                                        st.markdown("""
-                                        **Quick Setup Instructions:**
-                                        
-                                        1. **Navigate to Jobs** in your Domino project
-                                        2. **Click "Create Job"** 
-                                        3. **Configure the job:**
-                                           - **File to Run:** `artifacts/custom_metrics/{}`
-                                           - **Environment:** Choose an environment with required packages
-                                           - **Schedule:** Set your desired frequency (daily/weekly/hourly)
-                                        4. **Save and Start** the scheduled job
-                                        
-                                        📖 **Full Documentation:** [Schedule Jobs Guide](https://docs.dominodatalab.com/en/cloud/user_guide/5dce1f/schedule-jobs/)
-                                        
-                                        **💡 Tip:** Test the script manually first by running it as a regular job before scheduling it.
-                                        """.format(script_filename))
-                                    
+                                    script_path = f"artifacts/custom_metrics/{script_filename}"
+
+                                    # Create a simple write script file
+                                    import base64
+                                    encoded_content = base64.b64encode(script_content.encode('utf-8')).decode('utf-8')
+
+                                    # Create a temporary Python file that will write the actual script
+                                    writer_script = f"""import base64
+from pathlib import Path
+
+content = base64.b64decode('{encoded_content}').decode('utf-8')
+script_dir = Path('artifacts/custom_metrics')
+script_dir.mkdir(parents=True, exist_ok=True)
+script_path = script_dir / '{script_filename}'
+
+with open(script_path, 'w') as f:
+    f.write(content)
+
+print(f'Created {{script_path}}')
+"""
+
+                                    # Save writer script to a temporary location that will be synced
+                                    writer_filename = f".tmp_write_{script_filename}"
+                                    writer_path = Path(f"/mnt/code/{writer_filename}")
+
+                                    with open(writer_path, 'w') as f:
+                                        f.write(writer_script)
+
+                                    try:
+                                        # Initialize Domino client
+                                        d = domino.Domino(
+                                            DOMINO_PROJECT,
+                                            api_key=API_KEY,
+                                            host=API_HOST
+                                        )
+
+                                        # Start a job to create the file
+                                        # Command must be a string, not a list
+                                        with st.spinner("Creating job script via Domino API..."):
+                                            job_result = d.job_start(
+                                                command=f"python {writer_filename}",
+                                                title=f"Create {script_filename}"
+                                            )
+
+                                        job_id = job_result.get('id')
+                                        st.success(f"✅ Job script creation started!")
+                                        st.info(f"📍 **Script Location:** `{script_path}` (will be available once job completes)")
+                                        st.info(f"🔗 **Job ID:** `{job_id}`")
+
+                                        # Instructions for setting up scheduled job
+                                        with st.expander("📚 How to Set Up Scheduled Job", expanded=True):
+                                            st.markdown(f"""
+                                            **Quick Setup Instructions:**
+
+                                            1. **Wait for the file creation job to complete** (Job ID: `{job_id}`)
+                                            2. **Navigate to Jobs** in your Domino project
+                                            3. **Click "Create Job"**
+                                            4. **Configure the job:**
+                                               - **File to Run:** `{script_path}`
+                                               - **Environment:** Choose an environment with required packages
+                                               - **Schedule:** Set your desired frequency (daily/weekly/hourly)
+                                            5. **Save and Start** the scheduled job
+
+                                            📖 **Full Documentation:** [Schedule Jobs Guide](https://docs.dominodatalab.com/en/cloud/user_guide/5dce1f/schedule-jobs/)
+
+                                            **💡 Tip:** Test the script manually first by running it as a regular job before scheduling it.
+                                            """)
+
+                                    except Exception as api_error:
+                                        st.error(f"❌ Failed to create job via API: {api_error}")
+                                        st.warning("Falling back to direct file write (may not persist)")
+
+                                        # Fallback: show the script content so user can manually save it
+                                        with st.expander("📄 View Generated Script", expanded=True):
+                                            st.code(script_content, language='python')
+                                            st.download_button(
+                                                label="💾 Download Script",
+                                                data=script_content,
+                                                file_name=script_filename,
+                                                mime="text/x-python"
+                                            )
+
                                 except Exception as script_error:
-                                    st.error(f"❌ Failed to create job script: {script_error}")
+                                    st.error(f"❌ Failed to generate job script: {script_error}")
                                     st.exception(script_error)
 
                     except Exception as e:
