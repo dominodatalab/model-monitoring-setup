@@ -30,6 +30,17 @@ try:
 except ImportError:
     DOMINO_AVAILABLE = False
 
+# Try to import training sets separately
+try:
+    from domino_data.training_sets.client import (
+        list_training_sets,
+        list_training_set_versions,
+        get_training_set_version
+    )
+    TRAINING_SETS_AVAILABLE = True
+except ImportError:
+    TRAINING_SETS_AVAILABLE = False
+
 # ==================== Page Configuration ====================
 
 st.set_page_config(
@@ -159,6 +170,17 @@ def get_api_client(_cache_buster: str = "v3"):
         st.info("Please ensure DOMINO_USER_API_KEY is set in your environment")
         st.stop()
 
+@st.cache_data(ttl=300)  # Cache for 5 minutes
+def get_training_sets_list():
+    """Get and cache the list of training sets."""
+    if not TRAINING_SETS_AVAILABLE:
+        return []
+    try:
+        return list_training_sets()
+    except Exception as e:
+        st.error(f"Failed to get training sets: {e}")
+        return []
+
 # Use timestamp-based cache buster to force reload every minute
 cache_version = f"v3_{int(time.time() // 60)}"  # Changes every minute
 client = get_api_client(cache_version)
@@ -188,25 +210,129 @@ def get_status_badge(status: str) -> str:
 
     return f'<span class="status-badge {badge_class}">{status}</span>'
 
+def load_training_set_data(training_set_info: dict) -> pd.DataFrame:
+    """
+    Load data from a Domino Training Set.
+    
+    Args:
+        training_set_info: Dictionary containing training set metadata from list_training_sets()
+    
+    Returns:
+        DataFrame with training data
+    """
+    try:
+        if not TRAINING_SETS_AVAILABLE:
+            raise Exception("Training Sets API not available")
+        
+        training_set_name = training_set_info.get('name')
+        if not training_set_name:
+            raise Exception("Training set name not found")
+        
+        # Get the latest version of the training set
+        versions = list_training_set_versions(training_set_name=training_set_name)
+        if not versions:
+            raise Exception(f"No versions found for training set '{training_set_name}'")
+        
+        # Get the latest version (highest number)
+        latest_version = max(versions, key=lambda v: v.number)
+        
+        # Get the training set version object
+        ts_version = get_training_set_version(training_set_name, latest_version.number)
+        
+        # Load the training data as pandas DataFrame
+        df = ts_version.load_training_pandas()
+        
+        st.caption(f"✅ Loaded {len(df):,} training samples from training set '{training_set_name}' (version {latest_version.number})")
+        return df
+        
+    except Exception as e:
+        st.error(f"Error loading training set: {e}")
+        return pd.DataFrame()
+
 def load_prediction_data(start_date: datetime, end_date: datetime, model_id: str = None) -> pd.DataFrame:
     """
     Load prediction data for custom metric computation.
 
     This function attempts to load data in the following priority:
-    1. Ground truth data from model-monitor-storage data source (contains actual predictions)
-    2. Training data from local filesystem as fallback
+    1. Actual prediction data from /mnt/data/prediction_data (when model_id provided)
+    2. Ground truth data from model-monitor-storage data source
+    3. Training data from local filesystem as fallback
 
     Args:
         start_date: Start of date range
         end_date: End of date range
-        model_id: Model monitor ID (optional, used to filter ground truth data)
+        model_id: Model monitor ID (optional, used to load specific model predictions)
 
     Returns:
         DataFrame with prediction data
     """
     try:
-        # Try to load ground truth data from data source first
-        # Ground truth files contain actual prediction data with labels
+        # Priority 1: Try to load actual prediction data from /mnt/data/prediction_data
+        if model_id:
+            try:
+                st.info(f"📊 Loading prediction data for model {model_id}")
+                
+                prediction_base = Path("/mnt/data/prediction_data")
+                model_dir = prediction_base / model_id
+                
+                if model_dir.exists():
+                    # Find all parquet files within the date range
+                    all_files = []
+                    
+                    # Generate date range
+                    current_date = start_date.date()
+                    end_date_only = end_date.date()
+                    
+                    while current_date <= end_date_only:
+                        date_str = current_date.strftime("%Y-%m-%d") + "Z"
+                        date_dir = model_dir / f"$$date$$={date_str}"
+                        
+                        if date_dir.exists():
+                            # Find all hour directories for this date
+                            for hour_dir in date_dir.iterdir():
+                                if hour_dir.is_dir() and hour_dir.name.startswith("$$hour$$="):
+                                    # Find all parquet files in this hour
+                                    for file_path in hour_dir.glob("*.parquet"):
+                                        all_files.append(file_path)
+                        
+                        # Move to next date
+                        current_date += pd.Timedelta(days=1).to_pytimedelta()
+                    
+                    if all_files:
+                        # Load and combine all prediction files
+                        dfs = []
+                        for file_path in all_files:
+                            try:
+                                df_temp = pd.read_parquet(file_path)
+                                dfs.append(df_temp)
+                            except Exception as e:
+                                st.warning(f"Could not load {file_path.name}: {e}")
+                        
+                        if dfs:
+                            df = pd.concat(dfs, ignore_index=True)
+                            
+                            # Filter by timestamp if within range
+                            if 'timestamp' in df.columns:
+                                df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
+                                start_date_tz = pd.Timestamp(start_date, tz='UTC')
+                                end_date_tz = pd.Timestamp(end_date, tz='UTC')
+                                df = df[(df['timestamp'] >= start_date_tz) & (df['timestamp'] <= end_date_tz)]
+                            
+                            # Extract only feature columns for drift analysis
+                            feature_cols = [col for col in df.columns if 'feature' in col]
+                            if feature_cols:
+                                df_features = df[feature_cols]
+                                st.caption(f"✅ Loaded {len(df_features):,} prediction records with {len(feature_cols)} features from {len(dfs)} file(s)")
+                                return df_features
+                            else:
+                                st.warning("No feature columns found in prediction data")
+                
+                st.info("📊 No prediction data found for this model/date range, trying alternative sources")
+                
+            except Exception as e:
+                st.warning(f"⚠️ Could not load prediction data: {e}, trying alternative sources")
+
+        # Priority 2: Try to load ground truth data from data source
         try:
             from domino.data_sources import DataSourceClient
             import io
@@ -258,7 +384,7 @@ def load_prediction_data(start_date: datetime, end_date: datetime, model_id: str
         except Exception as e:
             st.warning(f"⚠️ Could not load from data source: {e}, falling back to training data")
 
-        # Fallback: Use training data as proxy
+        # Priority 3: Fallback to training data as proxy
         st.info("📊 Loading training data as proxy for prediction data")
 
         # Try multiple common training data file names and locations
@@ -733,15 +859,70 @@ Cache Version: {cache_version}
 elif page == "Custom Metrics":
     st.title("📊 Custom Metrics")
     st.markdown("Define and compute custom monitoring metrics for your models.")
+    
+    # Add project-specific note
+    st.info(f"📁 **Project Context**: Only models associated with project `{config.DOMINO_PROJECT_OWNER}/{config.DOMINO_PROJECT_NAME}` (ID: `{config.DOMINO_PROJECT_ID}`) are available for custom metrics.")
 
     try:
-        # Fetch available models
-        with st.spinner("Loading models..."):
+        # Fetch available models and filter by prediction data correlation
+        with st.spinner("Loading and filtering models..."):
             response = client.list_models()
-            models = response.get('modelDashboardItems', [])
+            all_models = response.get('modelDashboardItems', [])
+            
+            # Get available prediction data model IDs (these are workbench model version IDs)
+            prediction_base = Path("/mnt/data/prediction_data")
+            prediction_model_version_ids = []
+            if prediction_base.exists():
+                prediction_model_version_ids = [d.name for d in prediction_base.iterdir() if d.is_dir()]
+            
+            # Filter models by matching workbenchModelVersionId with prediction data IDs
+            # Need to call get_model() for each model to get detailed sourceDetails
+            models = []
+            for model in all_models:
+                try:
+                    # Get detailed model information which includes sourceDetails
+                    detailed_model = client.get_model(model.get('id'))
+                    source_details = detailed_model.get('sourceDetails', {})
+                    workbench_model_version_id = source_details.get('workbenchModelVersionId')
+                    
+                    if workbench_model_version_id and workbench_model_version_id in prediction_model_version_ids:
+                        # Use the detailed model info instead of the basic model info
+                        models.append(detailed_model)
+                except Exception as e:
+                    # If we can't get detailed info, skip this model
+                    st.warning(f"Could not get details for model {model.get('name', 'Unknown')}: {e}")
+                    continue
+            
+            if len(models) < len(all_models):
+                filtered_count = len(all_models) - len(models)
+                st.caption(f"ℹ️ Filtered out {filtered_count} model(s) without matching prediction data")
+                
+                # Show debug info in expander
+                with st.expander("🔍 Debug: Model Filtering Details", expanded=False):
+                    st.markdown("**Available Models (with matching prediction data):**")
+                    for model in models:
+                        source_details = model.get('sourceDetails', {})
+                        workbench_version_id = source_details.get('workbenchModelVersionId', 'N/A')
+                        st.markdown(f"• {model.get('name')} v{model.get('version')} (Monitor ID: `{model.get('id')}`, Workbench Version ID: `{workbench_version_id}`)")
+                    
+                    st.markdown("**Filtered Models (no matching prediction data):**")
+                    filtered_models = []
+                    for model in all_models:
+                        source_details = model.get('sourceDetails', {})
+                        workbench_model_version_id = source_details.get('workbenchModelVersionId')
+                        if not workbench_model_version_id or workbench_model_version_id not in prediction_model_version_ids:
+                            filtered_models.append(model)
+                    
+                    for model in filtered_models:
+                        source_details = model.get('sourceDetails', {})
+                        workbench_version_id = source_details.get('workbenchModelVersionId', 'None')
+                        st.markdown(f"• {model.get('name')} v{model.get('version')} (Monitor ID: `{model.get('id')}`, Workbench Version ID: `{workbench_version_id}`)")
+                    
+                    st.markdown("**Available Prediction Data IDs (Workbench Model Version IDs):**")
+                    st.code(", ".join(prediction_model_version_ids))
 
         if not models:
-            st.warning("No models available. Deploy a model with monitoring enabled.")
+            st.warning("No models with prediction data available for this project. Deploy a model with monitoring enabled and ensure prediction data is being captured.")
         else:
             # Create tabs for Compute and History
             tab1, tab2 = st.tabs(["🔬 Compute Metric", "📈 Metric History"])
@@ -851,33 +1032,149 @@ elif page == "Custom Metrics":
                 # Configuration Section
                 st.markdown("#### 3️⃣ Configure Parameters")
 
-                # Time period selection
+                # Training Set Selection and Current Period
                 col1, col2 = st.columns(2)
                 with col1:
-                    st.markdown("**Baseline Period** (Training/Reference Data)")
-                    baseline_start = st.date_input(
-                        "Start Date",
-                        value=datetime.now() - timedelta(days=60),
-                        key="baseline_start"
-                    )
-                    baseline_end = st.date_input(
-                        "End Date",
-                        value=datetime.now() - timedelta(days=30),
-                        key="baseline_end"
-                    )
+                    st.markdown("**Baseline Data** (Training Set)")
+                    
+                    # Training Set Selection UI will be added here
+                    if not TRAINING_SETS_AVAILABLE:
+                        st.warning("⚠️ Training Sets API not available. Using fallback date selection.")
+                        st.info("💡 **Tip:** Install `domino-data` package to enable training set selection: `pip install domino-data`")
+                        baseline_start = st.date_input(
+                            "Start Date",
+                            value=datetime.now() - timedelta(days=60),
+                            key="baseline_start"
+                        )
+                        baseline_end = st.date_input(
+                            "End Date",
+                            value=datetime.now() - timedelta(days=30),
+                            key="baseline_end"
+                        )
+                        selected_training_set = None
+                        training_set_confirmed = False
+                    else:
+                        # Training set selection
+                        try:
+                            with st.spinner("Loading training sets..."):
+                                # Get available training sets and order by most recent
+                                training_sets = get_training_sets_list()
+                                
+                            if training_sets:
+                                # For now, just sort by name (creation timestamp not available in TrainingSet object)
+                                training_sets_sorted = sorted(training_sets, key=lambda x: x.name)
+                                
+                                # Create display options with metadata
+                                training_set_options = {}
+                                for ts in training_sets_sorted:
+                                    # Get metadata from the meta dict if available
+                                    total_records = ts.meta.get('total_records', 'Unknown')
+                                    features = ts.meta.get('features', 'Unknown')
+                                    model_type = ts.meta.get('model_type', 'Unknown')
+                                    
+                                    display_name = f"{ts.name} ({total_records} records, {features} features, {model_type})"
+                                    # Convert TrainingSet to dict for easier handling
+                                    training_set_options[display_name] = {
+                                        'name': ts.name,
+                                        'project_id': ts.project_id,
+                                        'description': str(ts.description) if hasattr(ts.description, '__str__') else 'No description',
+                                        'meta': ts.meta
+                                    }
+                                
+                                # Training set selection dropdown
+                                selected_training_set_name = st.selectbox(
+                                    "Select Training Set",
+                                    options=list(training_set_options.keys()),
+                                    help="Training sets ordered by most recent creation date",
+                                    key="training_set_selection"
+                                )
+                                
+                                selected_training_set = training_set_options[selected_training_set_name]
+                                
+                                # Show training set details and confirmation
+                                with st.expander("📋 Training Set Details", expanded=True):
+                                    col_a, col_b = st.columns(2)
+                                    with col_a:
+                                        st.markdown(f"**Name:** {selected_training_set.get('name', 'N/A')}")
+                                        st.markdown(f"**Description:** {selected_training_set.get('description', 'No description')}")
+                                        st.markdown(f"**Project ID:** {selected_training_set.get('project_id', 'N/A')}")
+                                    with col_b:
+                                        meta = selected_training_set.get('meta', {})
+                                        st.markdown(f"**Total Records:** {meta.get('total_records', 'Unknown')}")
+                                        st.markdown(f"**Features:** {meta.get('features', 'Unknown')}")
+                                        st.markdown(f"**Model Type:** {meta.get('model_type', 'Unknown')}")
+                                    
+                                    # Show additional metadata if available
+                                    if meta:
+                                        st.markdown("**Additional Metadata:**")
+                                        for key, value in meta.items():
+                                            if key not in ['total_records', 'features', 'model_type']:
+                                                st.caption(f"• {key}: {value}")
+                                    
+                                    # Confirmation checkbox
+                                    training_set_confirmed = st.checkbox(
+                                        f"✅ Use '{selected_training_set.get('name')}' as baseline data",
+                                        key="training_set_confirmed",
+                                        help="Check this box to confirm using this training set as baseline"
+                                    )
+                                    
+                                    if not training_set_confirmed:
+                                        st.warning("⚠️ Please confirm the training set selection above to proceed")
+                                
+                            else:
+                                st.warning("⚠️ No training sets found. Using fallback date selection.")
+                                selected_training_set = None
+                                training_set_confirmed = False
+                                
+                        except Exception as e:
+                            st.error(f"❌ Failed to load training sets: {e}")
+                            selected_training_set = None
+                            training_set_confirmed = False
+                        
+                        # Fallback dates for backward compatibility
+                        baseline_start = datetime.now() - timedelta(days=60)
+                        baseline_end = datetime.now() - timedelta(days=30)
 
                 with col2:
                     st.markdown("**Current Period** (Recent Predictions)")
-                    current_start = st.date_input(
-                        "Start Date",
-                        value=datetime.now() - timedelta(days=7),
-                        key="current_start"
+                    
+                    # Time period selection
+                    time_period_days = st.number_input(
+                        "Days of recent data",
+                        min_value=1,
+                        max_value=30,
+                        value=1,  # Default to last 24 hours
+                        help="Number of days of recent prediction data to load (default: 1 day = last 24 hours)",
+                        key="time_period_days"
                     )
-                    current_end = st.date_input(
-                        "End Date",
-                        value=datetime.now(),
-                        key="current_end"
-                    )
+                    
+                    # Calculate dates based on time period
+                    current_end = datetime.now()
+                    current_start = current_end - timedelta(days=time_period_days)
+                    
+                    # Show the calculated date range
+                    st.caption(f"📅 Loading data from {current_start.strftime('%Y-%m-%d %H:%M')} to {current_end.strftime('%Y-%m-%d %H:%M')}")
+                    
+                    # Optional: Allow manual override
+                    with st.expander("🛠️ Advanced: Manual Date Override", expanded=False):
+                        manual_override = st.checkbox("Use custom date range", key="manual_override")
+                        if manual_override:
+                            current_start = datetime.combine(
+                                st.date_input(
+                                    "Start Date",
+                                    value=current_start.date(),
+                                    key="manual_current_start"
+                                ),
+                                datetime.min.time()
+                            )
+                            current_end = datetime.combine(
+                                st.date_input(
+                                    "End Date", 
+                                    value=current_end.date(),
+                                    key="manual_current_end"
+                                ),
+                                datetime.max.time()
+                            )
 
                 # Metric-specific parameters
                 st.markdown("**Metric Parameters**")
@@ -1234,6 +1531,11 @@ elif page == "Custom Metrics":
                     st.markdown("---")
                     st.markdown("### 📊 Results")
 
+                    # Check if training set is confirmed when available
+                    if TRAINING_SETS_AVAILABLE and selected_training_set and not training_set_confirmed:
+                        st.error("⚠️ Please confirm the training set selection above before computing metrics.")
+                        st.stop()
+
                     # Check if Domino SDK is available
                     if not DOMINO_AVAILABLE:
                         st.error("⚠️ Domino SDK not available. Cannot log custom metrics.")
@@ -1242,16 +1544,30 @@ elif page == "Custom Metrics":
 
                     try:
                         with st.spinner("Loading data..."):
-                            # Load baseline and current data
-                            baseline_data = load_prediction_data(
-                                datetime.combine(baseline_start, datetime.min.time()),
-                                datetime.combine(baseline_end, datetime.max.time()),
-                                model_id=selected_model_id
-                            )
+                            # Get the workbench model version ID for the selected model
+                            selected_model = next((m for m in models if m.get('id') == selected_model_id), None)
+                            workbench_model_version_id = None
+                            if selected_model:
+                                source_details = selected_model.get('sourceDetails', {})
+                                workbench_model_version_id = source_details.get('workbenchModelVersionId')
+                            
+                            # Load baseline data (training set or fallback)
+                            if TRAINING_SETS_AVAILABLE and selected_training_set and training_set_confirmed:
+                                st.info("📊 Loading baseline data from training set")
+                                baseline_data = load_training_set_data(selected_training_set)
+                            else:
+                                st.info("📊 Loading baseline data from prediction history (fallback)")
+                                baseline_data = load_prediction_data(
+                                    datetime.combine(baseline_start, datetime.min.time()),
+                                    datetime.combine(baseline_end, datetime.max.time()),
+                                    model_id=workbench_model_version_id or selected_model_id
+                                )
+                            
+                            # Load current data (always from predictions)
                             current_data = load_prediction_data(
                                 datetime.combine(current_start, datetime.min.time()),
                                 datetime.combine(current_end, datetime.max.time()),
-                                model_id=selected_model_id
+                                model_id=workbench_model_version_id or selected_model_id
                             )
 
                             if baseline_data.empty or current_data.empty:
@@ -1264,6 +1580,54 @@ elif page == "Custom Metrics":
                             current_data = current_data[numeric_cols]
 
                             st.success(f"✅ Loaded {len(baseline_data)} baseline and {len(current_data)} current samples")
+                            
+                            # Data Source Comparison Summary
+                            with st.expander("📋 Data Source Summary", expanded=True):
+                                col_summary1, col_summary2 = st.columns(2)
+                                
+                                with col_summary1:
+                                    st.markdown("### 📚 Baseline Data Source")
+                                    if TRAINING_SETS_AVAILABLE and selected_training_set and training_set_confirmed:
+                                        st.markdown("**Source Type:** 🎯 Training Set (API)")
+                                        st.markdown(f"**Training Set:** {selected_training_set.get('name', 'Unknown')}")
+                                        st.markdown(f"**Samples:** {len(baseline_data):,}")
+                                        st.markdown(f"**Features:** {len(baseline_data.columns)}")
+                                        st.markdown("**Description:** Actual data used to train the model")
+                                    else:
+                                        st.markdown("**Source Type:** 📂 Prediction History (Fallback)")
+                                        st.markdown(f"**Date Range:** {baseline_start} to {baseline_end}")
+                                        st.markdown(f"**Samples:** {len(baseline_data):,}")
+                                        st.markdown(f"**Features:** {len(baseline_data.columns)}")
+                                        st.markdown("**Description:** Historical prediction data as proxy")
+                                
+                                with col_summary2:
+                                    st.markdown("### 🔄 Current Data Source")
+                                    st.markdown("**Source Type:** 📈 Prediction Data")
+                                    st.markdown(f"**Date Range:** {current_start} to {current_end}")
+                                    st.markdown(f"**Samples:** {len(current_data):,}")
+                                    st.markdown(f"**Features:** {len(current_data.columns)}")
+                                    if selected_model_id:
+                                        # Find the workbench model version ID for this monitored model
+                                        selected_model = next((m for m in models if m.get('id') == selected_model_id), None)
+                                        if selected_model:
+                                            source_details = selected_model.get('sourceDetails', {})
+                                            workbench_version_id = source_details.get('workbenchModelVersionId')
+                                            if workbench_version_id:
+                                                prediction_dir = f"/mnt/data/prediction_data/{workbench_version_id}"
+                                                if Path(prediction_dir).exists():
+                                                    st.markdown(f"**Description:** Actual model predictions from `/mnt/data/prediction_data/{workbench_version_id}`")
+                                                else:
+                                                    st.markdown("**Description:** Fallback data (ground truth or training proxy)")
+                                            else:
+                                                st.markdown("**Description:** Fallback data (no workbench version ID)")
+                                        else:
+                                            st.markdown("**Description:** Model prediction data or fallback")
+                                    else:
+                                        st.markdown("**Description:** Model prediction data or fallback")
+                                    
+                                # Show tip when fallback mode is used
+                                if not (TRAINING_SETS_AVAILABLE and selected_training_set and training_set_confirmed):
+                                    st.info("💡 **Tip:** Select a training set above for more accurate baseline comparison against actual training data.")
 
                         with st.spinner("Computing metric..."):
                             # Execute the appropriate metric function
