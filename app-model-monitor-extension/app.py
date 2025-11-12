@@ -431,7 +431,7 @@ st.sidebar.markdown("---")
 
 page = st.sidebar.radio(
     "Navigation",
-    ["Models", "Custom Metrics"],
+    ["Custom Metrics", "Model Comparison Dashboard"],
     label_visibility="collapsed"
 )
 
@@ -444,8 +444,8 @@ st.sidebar.info(
 
 # ==================== PAGE 1: Models (List + Comparison) ====================
 
-if page == "Models":
-    st.title("📋 Model Monitor")
+if page == "Model Comparison Dashboard":
+    st.title("Model Comparison Dashboard")
     st.markdown("View and compare models registered in Model Monitoring")
 
     try:
@@ -895,7 +895,7 @@ elif page == "Custom Metrics":
             
             if len(models) < len(all_models):
                 filtered_count = len(all_models) - len(models)
-                st.caption(f"ℹ️ Filtered out {filtered_count} model(s) without matching prediction data")
+                st.caption(f"ℹ️ Filtered out {filtered_count} model(s) that are visible to the user but not part of this project. You must deploy the app in the project containing the models you would like to register metrics for")
                 
                 # Show debug info in expander
                 with st.expander("🔍 Debug: Model Filtering Details", expanded=False):
@@ -1011,21 +1011,7 @@ elif page == "Custom Metrics":
                     """)
 
                 elif metric_type == "Custom Python Function":
-                    st.markdown("""
-                    Custom Python functions allow full flexibility in metric computation.
-
-                    **Function signature:**
-                    ```python
-                    def compute_metric(baseline_data: pd.DataFrame,
-                                      current_data: pd.DataFrame) -> dict
-                    ```
-
-                    **Returns:**
-                    - `value`: Numeric metric value
-                    - `metadata`: Optional dict with additional info
-
-                    **Available libraries:** numpy, pandas, scipy, sklearn
-                    """)
+                    st.markdown("Custom Python functions allow full flexibility in metric computation.")
 
                 st.markdown("---")
 
@@ -1100,9 +1086,12 @@ elif page == "Custom Metrics":
                                         st.markdown(f"**Project ID:** {selected_training_set.get('project_id', 'N/A')}")
                                     with col_b:
                                         meta = selected_training_set.get('meta', {})
-                                        st.markdown(f"**Total Records:** {meta.get('total_records', 'Unknown')}")
-                                        st.markdown(f"**Features:** {meta.get('features', 'Unknown')}")
-                                        st.markdown(f"**Model Type:** {meta.get('model_type', 'Unknown')}")
+                                        if meta.get('total_records'):
+                                            st.markdown(f"**Total Records:** {meta.get('total_records')}")
+                                        if meta.get('features'):
+                                            st.markdown(f"**Features:** {meta.get('features')}")
+                                        if meta.get('model_type'):
+                                            st.markdown(f"**Model Type:** {meta.get('model_type')}")
                                     
                                     # Show additional metadata if available
                                     if meta:
