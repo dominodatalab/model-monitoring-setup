@@ -55,95 +55,245 @@ except ImportError:
 
 st.set_page_config(
     page_title="Model Monitoring Dashboard",
-    page_icon="📊",
+    page_icon=str(app_dir / "app-images" / "Domino_logo.svg"),
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# ==================== Custom Styling (Domino Theme) ====================
+# ==================== Custom Styling (Domino Model Monitor Theme) ====================
 
 DOMINO_STYLE = """
 <style>
-    /* Domino color palette */
+    /* Domino Model Monitor color palette */
     :root {
-        --domino-dark-bg: #3C3A42;
-        --domino-text: #97A3B7;
-        --domino-accent: #626262;
         --domino-primary: #FF6B35;
-        --domino-success: #4CAF50;
-        --domino-warning: #FFA726;
-        --domino-error: #EF5350;
+        --domino-primary-hover: #E55A2B;
+        --domino-primary-light: #FFF4F1;
+        --domino-dark-bg: #F8F9FA;
+        --domino-card-bg: #FFFFFF;
+        --domino-border: #E9ECEF;
+        --domino-text-primary: #212529;
+        --domino-text-secondary: #6C757D;
+        --domino-text-muted: #ADB5BD;
+        --domino-success: #28A745;
+        --domino-warning: #FFC107;
+        --domino-danger: #DC3545;
+        --domino-info: #17A2B8;
+        --domino-light: #F8F9FA;
+        --domino-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+        --domino-shadow-lg: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
     }
 
     /* Main container styling */
+    .main > div {
+        background-color: var(--domino-light);
+        padding: 1.5rem;
+    }
+    
     .main {
-        background-color: #0E1117;
+        background-color: var(--domino-light);
     }
 
-    /* Headers */
+    /* Typography */
     h1 {
-        color: #FFFFFF;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        font-weight: 600;
-        margin-bottom: 1rem;
+        color: var(--domino-text-primary);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        font-weight: 700;
+        font-size: 2rem;
+        margin-bottom: 0.5rem;
+        line-height: 1.2;
     }
 
-    h2, h3 {
-        color: var(--domino-text);
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        font-weight: 500;
+    h2 {
+        color: var(--domino-text-primary);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        font-weight: 600;
+        font-size: 1.5rem;
+        margin-bottom: 1rem;
+        margin-top: 2rem;
+    }
+
+    h3 {
+        color: var(--domino-text-primary);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        font-weight: 600;
+        font-size: 1.25rem;
+        margin-bottom: 0.75rem;
     }
 
     /* Sidebar styling */
     [data-testid="stSidebar"] {
-        background-color: var(--domino-dark-bg);
+        background-color: var(--domino-card-bg);
+        border-right: 1px solid var(--domino-border);
+        padding: 1.5rem 1rem;
     }
 
     [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] {
-        color: var(--domino-text);
+        color: var(--domino-text-secondary);
     }
 
-    /* Cards and containers */
+    /* Card styling for metrics and content */
     .stMetric {
-        background-color: var(--domino-dark-bg);
-        padding: 1rem;
+        background-color: var(--domino-card-bg);
+        padding: 1.5rem;
         border-radius: 0.5rem;
+        border: 1px solid var(--domino-border);
+        box-shadow: var(--domino-shadow);
+        margin-bottom: 1rem;
     }
 
-    /* Metric text colors */
+    /* Metric components */
     .stMetric label {
-        color: var(--domino-text) !important;
+        color: var(--domino-text-secondary) !important;
+        font-weight: 600;
+        font-size: 0.875rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
     }
 
     .stMetric [data-testid="stMetricValue"] {
-        color: #FFFFFF !important;
-        font-weight: 600;
+        color: var(--domino-text-primary) !important;
+        font-weight: 700;
+        font-size: 2rem;
     }
 
     .stMetric [data-testid="stMetricDelta"] {
-        color: var(--domino-text) !important;
+        color: var(--domino-text-muted) !important;
+        font-size: 0.875rem;
     }
 
-    /* Buttons */
-    .stButton>button {
+    /* Button styling */
+    .stButton > button {
         background-color: var(--domino-primary);
         color: white;
+        border: 1px solid var(--domino-primary);
+        border-radius: 0.375rem;
+        font-weight: 600;
+        font-size: 0.875rem;
+        padding: 0.5rem 1rem;
+        transition: all 0.15s ease-in-out;
+        box-shadow: var(--domino-shadow);
+    }
+
+    .stButton > button:hover {
+        background-color: var(--domino-primary-hover);
+        border-color: var(--domino-primary-hover);
+        box-shadow: var(--domino-shadow-lg);
+        transform: translateY(-1px);
+    }
+
+    /* Tab styling */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 0;
+        background-color: var(--domino-card-bg);
+        border-radius: 0.5rem 0.5rem 0 0;
+        border: 1px solid var(--domino-border);
+        border-bottom: none;
+    }
+
+    .stTabs [data-baseweb="tab"] {
+        background-color: transparent;
+        color: var(--domino-text-secondary);
         border: none;
-        border-radius: 0.25rem;
+        border-bottom: 3px solid transparent;
+        font-weight: 600;
+        padding: 1rem 1.5rem;
+    }
+
+    .stTabs [data-baseweb="tab"]:hover {
+        background-color: var(--domino-light);
+        color: var(--domino-text-primary);
+    }
+
+    .stTabs [aria-selected="true"] {
+        background-color: var(--domino-card-bg);
+        color: var(--domino-primary);
+        border-bottom-color: var(--domino-primary);
+    }
+
+    /* Expander styling */
+    .streamlit-expanderHeader {
+        background-color: var(--domino-card-bg);
+        border: 1px solid var(--domino-border);
+        border-radius: 0.5rem;
+        font-weight: 600;
+        color: var(--domino-text-primary);
+    }
+
+    .streamlit-expanderContent {
+        background-color: var(--domino-card-bg);
+        border: 1px solid var(--domino-border);
+        border-top: none;
+        border-radius: 0 0 0.5rem 0.5rem;
+    }
+
+    /* Input styling */
+    .stSelectbox > div > div {
+        background-color: var(--domino-card-bg);
+        border: 1px solid var(--domino-border);
+        border-radius: 0.375rem;
+    }
+
+    .stTextInput > div > div > input {
+        background-color: var(--domino-card-bg);
+        border: 1px solid var(--domino-border);
+        border-radius: 0.375rem;
+        color: var(--domino-text-primary);
+    }
+
+    .stNumberInput > div > div > input {
+        background-color: var(--domino-card-bg);
+        border: 1px solid var(--domino-border);
+        border-radius: 0.375rem;
+        color: var(--domino-text-primary);
+    }
+
+    /* Checkbox styling */
+    .stCheckbox {
+        color: var(--domino-text-primary);
         font-weight: 500;
     }
 
-    .stButton>button:hover {
-        background-color: #E55A2B;
+    /* Alert/Status styling */
+    .stAlert {
+        border-radius: 0.5rem;
+        border: none;
+        box-shadow: var(--domino-shadow);
+    }
+
+    .stSuccess {
+        background-color: #D4EDDA;
+        color: #155724;
+        border: 1px solid #C3E6CB;
+    }
+
+    .stWarning {
+        background-color: #FFF3CD;
+        color: #856404;
+        border: 1px solid #FFEAA7;
+    }
+
+    .stError {
+        background-color: #F8D7DA;
+        color: #721C24;
+        border: 1px solid #F5C6CB;
+    }
+
+    .stInfo {
+        background-color: #CCE7F0;
+        color: #0C5460;
+        border: 1px solid #BEE5EB;
     }
 
     /* Status badges */
     .status-badge {
         display: inline-block;
-        padding: 0.25rem 0.75rem;
-        border-radius: 1rem;
-        font-size: 0.85rem;
-        font-weight: 500;
+        padding: 0.375rem 0.75rem;
+        border-radius: 0.375rem;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
     }
 
     .status-healthy {
@@ -153,12 +303,41 @@ DOMINO_STYLE = """
 
     .status-warning {
         background-color: var(--domino-warning);
-        color: white;
+        color: #212529;
     }
 
     .status-error {
-        background-color: var(--domino-error);
+        background-color: var(--domino-danger);
         color: white;
+    }
+
+    /* Content containers */
+    .block-container {
+        padding: 2rem 1rem;
+        max-width: 1200px;
+    }
+
+    /* Dataframe styling */
+    .stDataFrame {
+        background-color: var(--domino-card-bg);
+        border: 1px solid var(--domino-border);
+        border-radius: 0.5rem;
+        box-shadow: var(--domino-shadow);
+    }
+
+    /* JSON display styling */
+    .stJson {
+        background-color: var(--domino-light);
+        border: 1px solid var(--domino-border);
+        border-radius: 0.375rem;
+        font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    }
+
+    /* Section dividers */
+    hr {
+        border: none;
+        border-top: 1px solid var(--domino-border);
+        margin: 2rem 0;
     }
 </style>
 """
@@ -434,9 +613,446 @@ def load_prediction_data(start_date: datetime, end_date: datetime, model_id: str
         st.error(f"Error loading data: {e}")
         return pd.DataFrame()
 
+def generate_metric_job_script(metric_name, metric_type, custom_function, selected_model_id, 
+                              selected_model_name, baseline_data_config, current_data_config,
+                              alert_config, metric_params):
+    """
+    Generate a Python script for scheduled metric computation job.
+    
+    Returns:
+        String containing the complete Python script
+    """
+    
+    # Prepare imports based on metric type
+    imports = [
+        "#!/usr/bin/env python3",
+        '"""',
+        f'Scheduled Custom Metric Job: {metric_name}',
+        f'Generated automatically from Model Monitoring App',
+        f'Metric Type: {metric_type}',
+        f'Model: {selected_model_name}',
+        '"""',
+        '',
+        'import pandas as pd',
+        'import numpy as np',
+        'from datetime import datetime, timedelta',
+        'from pathlib import Path',
+        'import sys',
+        'import os',
+        '',
+        '# Import Domino SDK',
+        'import domino',
+        '',
+        '# Add project imports if needed',
+        'try:',
+        '    from domino_data.training_sets.client import (',
+        '        list_training_sets,',
+        '        list_training_set_versions,',
+        '        get_training_set_version',
+        '    )',
+        '    TRAINING_SETS_AVAILABLE = True',
+        'except ImportError:',
+        '    TRAINING_SETS_AVAILABLE = False',
+        '',
+    ]
+    
+    # Add scipy imports for built-in metrics
+    if metric_type in ["Kolmogorov-Smirnov Test", "Population Stability Index (PSI)", "Jensen-Shannon Divergence"]:
+        imports.extend([
+            'from scipy import stats',
+            'from scipy.stats import entropy',
+            'from scipy.spatial import distance',
+            ''
+        ])
+    
+    # Configuration section
+    config_section = [
+        '# ==================== Configuration ====================',
+        f'METRIC_NAME = "{metric_name}"',
+        f'MODEL_ID = "{selected_model_id}"',
+        f'MODEL_NAME = "{selected_model_name}"',
+        '',
+        '# Domino project configuration',
+        'DOMINO_PROJECT_OWNER = os.environ.get("DOMINO_PROJECT_OWNER", "andrea_lowe")',
+        'DOMINO_PROJECT_NAME = os.environ.get("DOMINO_PROJECT_NAME", "model-monitoring-tutorial")',
+        'DOMINO_PROJECT = f"{DOMINO_PROJECT_OWNER}/{DOMINO_PROJECT_NAME}"',
+        'API_HOST = "https://se-demo.domino.tech"',
+        'API_KEY = os.environ.get("DOMINO_USER_API_KEY", "")',
+        '',
+    ]
+    
+    # Data loading functions
+    data_functions = [
+        '# ==================== Data Loading Functions ====================',
+        '',
+        'def load_baseline_data():',
+        '    """Load baseline data for metric computation."""',
+    ]
+    
+    if baseline_data_config['use_training_set'] and baseline_data_config['training_set']:
+        ts_name = baseline_data_config['training_set']['name']
+        data_functions.extend([
+            '    if not TRAINING_SETS_AVAILABLE:',
+            '        raise Exception("Training Sets API not available")',
+            '    ',
+            f'    training_set_name = "{ts_name}"',
+            '    versions = list_training_set_versions(training_set_name=training_set_name)',
+            '    if not versions:',
+            '        raise Exception(f"No versions found for training set \\"{training_set_name}\\"")',
+            '    ',
+            '    latest_version = max(versions, key=lambda v: v.number)',
+            '    ts_version = get_training_set_version(training_set_name, latest_version.number)',
+            '    df = ts_version.load_training_pandas()',
+            '    ',
+            '    print(f"✅ Loaded {len(df):,} training samples from \\"{training_set_name}\\" (version {latest_version.number})")',
+            '    return df',
+        ])
+    else:
+        data_functions.extend([
+            '    # Fallback: load from training data file',
+            '    training_data_paths = [',
+            '        Path("/mnt/artifacts/training_data.csv"),',
+            '        Path("/mnt/data/training_data.csv"),',
+            '    ]',
+            '    ',
+            '    for path in training_data_paths:',
+            '        if path.exists():',
+            '            df = pd.read_csv(path)',
+            '            print(f"✅ Loaded {len(df):,} samples from {path}")',
+            '            return df',
+            '    ',
+            '    raise FileNotFoundError("Training data not found")',
+        ])
+    
+    days = current_data_config['days']
+    data_functions.extend([
+        '',
+        'def load_current_data():',
+        '    """Load current prediction data for metric computation."""',
+        f'    days = {days}',
+        '    end_date = datetime.now()',
+        '    start_date = end_date - timedelta(days=days)',
+        '    ',
+        '    # Try to load from prediction data directory',
+        '    prediction_base = Path("/mnt/data/prediction_data")',
+        '    model_dir = prediction_base / MODEL_ID',
+        '    ',
+        '    if model_dir.exists():',
+        '        # Load prediction files within date range',
+        '        all_files = []',
+        '        current_date = start_date.date()',
+        '        end_date_only = end_date.date()',
+        '        ',
+        '        while current_date <= end_date_only:',
+        '            date_str = current_date.strftime("%Y-%m-%d") + "Z"',
+        '            date_dir = model_dir / f"$$date$$={date_str}"',
+        '            ',
+        '            if date_dir.exists():',
+        '                for hour_dir in date_dir.iterdir():',
+        '                    if hour_dir.is_dir() and hour_dir.name.startswith("$$hour$$="):',
+        '                        for file_path in hour_dir.glob("*.parquet"):',
+        '                            all_files.append(file_path)',
+        '            ',
+        '            current_date += timedelta(days=1)',
+        '        ',
+        '        if all_files:',
+        '            dfs = []',
+        '            for file_path in all_files:',
+        '                try:',
+        '                    df_temp = pd.read_parquet(file_path)',
+        '                    dfs.append(df_temp)',
+        '                except Exception as e:',
+        '                    print(f"Could not load {file_path.name}: {e}")',
+        '            ',
+        '            if dfs:',
+        '                df = pd.concat(dfs, ignore_index=True)',
+        '                feature_cols = [col for col in df.columns if "feature" in col]',
+        '                if feature_cols:',
+        '                    print(f"✅ Loaded {len(df):,} prediction records with {len(feature_cols)} features")',
+        '                    return df[feature_cols]',
+        '    ',
+        '    # Fallback: use training data as proxy',
+        '    print("⚠️ Using training data as proxy for current predictions")',
+        '    df = load_baseline_data()',
+        '    sample_size = min(1000, len(df))',
+        '    return df.sample(n=sample_size, random_state=42)',
+        '',
+    ])
+    
+    # Metric computation function
+    metric_function = []
+    
+    if metric_type == "Custom Python Function":
+        # Use the custom function provided by user
+        metric_function.extend([
+            '# ==================== Custom Metric Function ====================',
+            '',
+            custom_function.strip(),
+            '',
+        ])
+    else:
+        # Generate built-in metric function
+        metric_function.extend([
+            '# ==================== Metric Computation Function ====================',
+            '',
+            'def compute_metric(baseline_data, current_data):',
+            f'    """Compute {metric_type} metric."""',
+        ])
+        
+        if metric_type == "Kolmogorov-Smirnov Test":
+            ks_threshold = metric_params.get('ks_threshold', 0.05)
+            significance_level = metric_params.get('significance_level', 0.05)
+            metric_function.extend([
+                '    from scipy import stats',
+                '    import numpy as np',
+                '    ',
+                '    results = []',
+                '    for column in baseline_data.columns:',
+                '        ks_stat, p_value = stats.ks_2samp(',
+                '            baseline_data[column].dropna(),',
+                '            current_data[column].dropna()',
+                '        )',
+                '        results.append({',
+                '            "feature": column,',
+                '            "ks_statistic": ks_stat,',
+                '            "p_value": p_value,',
+                f'            "drifted": ks_stat > {ks_threshold} or p_value < {significance_level}',
+                '        })',
+                '    ',
+                '    drifted_features = [r for r in results if r["drifted"]]',
+                '    max_ks = max([r["ks_statistic"] for r in results])',
+                '    ',
+                '    return {',
+                '        "value": float(max_ks),',
+                '        "metadata": {',
+                '            "total_features": len(results),',
+                '            "drifted_features": len(drifted_features),',
+                '            "baseline_samples": len(baseline_data),',
+                '            "current_samples": len(current_data)',
+                '        },',
+                '        "status": "critical" if len(drifted_features) > len(results) * 0.3',
+                '                  else "warning" if len(drifted_features) > 0',
+                '                  else "ok"',
+                '    }',
+            ])
+        elif metric_type == "Population Stability Index (PSI)":
+            num_bins = metric_params.get('num_bins', 10)
+            psi_threshold = metric_params.get('psi_threshold', 0.10)
+            psi_critical = metric_params.get('psi_critical', 0.25)
+            metric_function.extend([
+                '    import numpy as np',
+                '    import pandas as pd',
+                '    ',
+                f'    def calculate_psi(baseline, current, bins={num_bins}):',
+                '        breakpoints = np.linspace(baseline.min(), baseline.max(), bins + 1)',
+                '        breakpoints[0] = -np.inf',
+                '        breakpoints[-1] = np.inf',
+                '        ',
+                '        baseline_binned = pd.cut(baseline, bins=breakpoints)',
+                '        current_binned = pd.cut(current, bins=breakpoints)',
+                '        ',
+                '        baseline_counts = baseline_binned.value_counts().sort_index()',
+                '        current_counts = current_binned.value_counts().sort_index()',
+                '        ',
+                '        baseline_props = baseline_counts / len(baseline)',
+                '        current_props = current_counts / len(current)',
+                '        ',
+                '        baseline_props = baseline_props.replace(0, 0.0001)',
+                '        current_props = current_props.replace(0, 0.0001)',
+                '        ',
+                '        psi = np.sum((current_props - baseline_props) * np.log(current_props / baseline_props))',
+                '        return psi',
+                '    ',
+                '    psi_results = {}',
+                '    for column in baseline_data.columns:',
+                '        psi_value = calculate_psi(',
+                '            baseline_data[column].dropna(),',
+                '            current_data[column].dropna()',
+                '        )',
+                '        psi_results[column] = float(psi_value)',
+                '    ',
+                '    max_psi = max(psi_results.values())',
+                '    avg_psi = np.mean(list(psi_results.values()))',
+                '    ',
+                '    return {',
+                '        "value": float(max_psi),',
+                '        "metadata": {',
+                '            "average_psi": float(avg_psi),',
+                '            "baseline_samples": len(baseline_data),',
+                '            "current_samples": len(current_data)',
+                '        },',
+                f'        "status": "critical" if max_psi > {psi_critical}',
+                f'                  else "warning" if max_psi > {psi_threshold}',
+                '                  else "ok"',
+                '    }',
+            ])
+        elif metric_type == "Jensen-Shannon Divergence":
+            js_threshold = metric_params.get('js_threshold', 0.10)
+            metric_function.extend([
+                '    import numpy as np',
+                '    from scipy.stats import entropy',
+                '    ',
+                '    def calculate_js_divergence(baseline, current, bins=50):',
+                '        min_val = min(baseline.min(), current.min())',
+                '        max_val = max(baseline.max(), current.max())',
+                '        bins_range = np.linspace(min_val, max_val, bins)',
+                '        ',
+                '        p, _ = np.histogram(baseline, bins=bins_range, density=True)',
+                '        q, _ = np.histogram(current, bins=bins_range, density=True)',
+                '        ',
+                '        p = p / p.sum() if p.sum() > 0 else p + 1e-10',
+                '        q = q / q.sum() if q.sum() > 0 else q + 1e-10',
+                '        ',
+                '        m = 0.5 * (p + q)',
+                '        js_div = 0.5 * entropy(p, m) + 0.5 * entropy(q, m)',
+                '        return js_div',
+                '    ',
+                '    js_results = {}',
+                '    for column in baseline_data.columns:',
+                '        js_value = calculate_js_divergence(',
+                '            baseline_data[column].dropna(),',
+                '            current_data[column].dropna()',
+                '        )',
+                '        js_results[column] = float(js_value)',
+                '    ',
+                '    max_js = max(js_results.values())',
+                '    avg_js = np.mean(list(js_results.values()))',
+                '    drifted_count = sum(1 for v in js_results.values() if v > {})'.format(js_threshold),
+                '    ',
+                '    return {',
+                '        "value": float(max_js),',
+                '        "metadata": {',
+                '            "average_js_divergence": float(avg_js),',
+                '            "drifted_features": drifted_count,',
+                '            "baseline_samples": len(baseline_data),',
+                '            "current_samples": len(current_data)',
+                '        },',
+                f'        "status": "critical" if max_js > {js_threshold} * 2',
+                f'                  else "warning" if max_js > {js_threshold}',
+                '                  else "ok"',
+                '    }',
+            ])
+    
+    # Main execution section
+    main_section = [
+        '',
+        '# ==================== Main Execution ====================',
+        '',
+        'def main():',
+        '    """Main function to compute and log custom metric."""',
+        '    print("=" * 60)',
+        f'    print("🎯 Computing Custom Metric: {metric_name}")',
+        '    print("=" * 60)',
+        '    ',
+        '    try:',
+        '        # Load data',
+        '        print("📊 Loading baseline data...")',
+        '        baseline_data = load_baseline_data()',
+        '        ',
+        '        print("📈 Loading current data...")',
+        '        current_data = load_current_data()',
+        '        ',
+        '        # Select only numeric features',
+        '        numeric_cols = baseline_data.select_dtypes(include=[np.number]).columns',
+        '        baseline_data = baseline_data[numeric_cols]',
+        '        current_data = current_data[numeric_cols]',
+        '        ',
+        '        print(f"✅ Data loaded: {len(baseline_data)} baseline, {len(current_data)} current samples")',
+        '        ',
+        '        # Compute metric',
+        '        print("🔍 Computing metric...")',
+        '        result = compute_metric(baseline_data, current_data)',
+        '        metric_value = result["value"]',
+        '        ',
+        '        print(f"📊 Metric Value: {metric_value:.4f}")',
+        "        print(f\"📈 Status: {result.get('status', 'ok')}\")",
+        '        ',
+        '        # Initialize Domino client',
+        '        print("🔗 Logging metric to Domino...")',
+        '        d = domino.Domino(DOMINO_PROJECT, api_key=API_KEY, host=API_HOST)',
+        '        metrics_client = d.custom_metrics_client()',
+        '        ',
+        '        # Log metric',
+        '        timestamp = datetime.utcnow().isoformat() + "Z"',
+        '        tags = {',
+        f'            "metric_type": "{metric_type}",',
+        '            "automated": "true",',
+        '            "job_run": "true"',
+        '        }',
+        '        ',
+        '        metrics_client.log_metric(MODEL_ID, METRIC_NAME, metric_value, timestamp, tags)',
+        '        print("✅ Metric logged successfully!")',
+        '',
+    ]
+    
+    # Add alert logic if configured
+    if alert_config and alert_config['enabled']:
+        condition = alert_config['condition']
+        main_section.extend([
+            '        # Send alert if configured',
+            '        print("🚨 Checking alert conditions...")',
+            '        try:',
+            f'            condition = metrics_client.{condition}',
+        ])
+        
+        if condition == "BETWEEN":
+            lower = alert_config['lower_limit']
+            upper = alert_config['upper_limit']
+            main_section.extend([
+                f'            lower_limit = {lower}',
+                f'            upper_limit = {upper}',
+                '            alert_kwargs = {"condition": condition, "lower_limit": lower_limit, "upper_limit": upper_limit}',
+            ])
+        else:
+            threshold = alert_config['threshold_value']
+            limit_type = 'upper_limit' if 'GREATER' in condition else 'lower_limit'
+            main_section.extend([
+                f'            threshold_value = {threshold}',
+                f'            alert_kwargs = {{"condition": condition, "{limit_type}": threshold_value}}',
+            ])
+        
+        if alert_config['message']:
+            message = alert_config['message']
+            main_section.append(f'            alert_kwargs["description"] = "{message}"')
+        else:
+            main_section.append('            alert_kwargs["description"] = f"Alert triggered for metric \'{METRIC_NAME}\'"')
+
+        main_section.extend([
+            '            ',
+            '            metrics_client.trigger_alert(MODEL_ID, METRIC_NAME, metric_value, **alert_kwargs)',
+            '            print("🚨 Alert sent successfully!")',
+            '        except Exception as alert_error:',
+            '            print(f"⚠️ Alert failed: {alert_error}")',
+            '',
+        ])
+    
+    main_section.extend([
+        '        print("\\n" + "=" * 60)',
+        '        print("✅ Job completed successfully!")',
+        '        print("=" * 60)',
+        '        ',
+        '    except Exception as e:',
+        '        print(f"❌ Job failed: {e}")',
+        '        raise',
+        '',
+        '',
+        'if __name__ == "__main__":',
+        '    main()',
+    ])
+    
+    # Combine all sections
+    script_lines = imports + config_section + data_functions + metric_function + main_section
+    return '\n'.join(script_lines)
+
 # ==================== Sidebar Navigation ====================
 
-st.sidebar.title("📊 Model Monitoring")
+# Sidebar logo and title
+st.sidebar.markdown("""
+<div style='display: flex; align-items: center; gap: 10px;'>
+    <img src='data:image/svg+xml;base64,{}' width='40'/>
+    <h1 style='margin: 0; padding: 0;'>Model Monitoring</h1>
+</div>
+""".format(__import__('base64').b64encode(open(str(app_dir / "app-images" / "Domino_logo.svg"), 'rb').read()).decode()), unsafe_allow_html=True)
 st.sidebar.markdown("---")
 
 page = st.sidebar.radio(
@@ -455,7 +1071,14 @@ st.sidebar.info(
 # ==================== PAGE 1: Models (List + Comparison) ====================
 
 if page == "Model Comparison Dashboard":
-    st.title("Model Comparison Dashboard")
+    # Page title with logo
+    col_logo, col_title = st.columns([1, 20])
+    with col_logo:
+        st.markdown("<div style='display: flex; align-items: center; height: 100%;'>", unsafe_allow_html=True)
+        st.image(str(app_dir / "app-images" / "Domino_logo.svg"), width=50)
+        st.markdown("</div>", unsafe_allow_html=True)
+    with col_title:
+        st.title("Model Comparison Dashboard")
     st.markdown("View and compare models registered in Model Monitoring")
 
     try:
@@ -867,9 +1490,16 @@ Cache Version: {cache_version}
 # ==================== PAGE 2: Custom Metrics ====================
 
 elif page == "Custom Metrics":
-    st.title("📊 Custom Metrics")
+    # Page title with logo
+    col_logo, col_title = st.columns([1, 20])
+    with col_logo:
+        st.markdown("<div style='display: flex; align-items: center; height: 100%;'>", unsafe_allow_html=True)
+        st.image(str(app_dir / "app-images" / "Domino_logo.svg"), width=50)
+        st.markdown("</div>", unsafe_allow_html=True)
+    with col_title:
+        st.title("Custom Metrics")
     st.markdown("Define and compute custom monitoring metrics for your models.")
-    
+
     # Add project-specific note
     st.info(f"📁 **Project Context**: Only models associated with project `{DOMINO_PROJECT_OWNER}/{DOMINO_PROJECT_NAME}` (ID: `{DOMINO_PROJECT_ID}`) are available for custom metrics.")
 
@@ -1114,6 +1744,7 @@ elif page == "Custom Metrics":
                                     # Confirmation checkbox
                                     training_set_confirmed = st.checkbox(
                                         f"Use '{selected_training_set.get('name')}' as baseline data",
+                                        value=True,
                                         key="training_set_confirmed",
                                         help="Check this box to confirm using this training set as baseline"
                                     )
@@ -1143,7 +1774,7 @@ elif page == "Custom Metrics":
                         "Days of recent data",
                         min_value=1,
                         max_value=30,
-                        value=1,  # Default to last 24 hours
+                        value=7,  # Default to last 7 days
                         help="Number of days of recent prediction data to load (default: 1 day = last 24 hours)",
                         key="time_period_days"
                     )
@@ -1517,6 +2148,79 @@ elif page == "Custom Metrics":
                             help="Optional tags for organizing metrics"
                         )
 
+                # Alert Configuration Section
+                st.markdown("---")
+                st.markdown("**Alert Configuration** (Optional)")
+                
+                alert_col1, alert_col2 = st.columns(2)
+                
+                with alert_col1:
+                    enable_alerts = st.checkbox(
+                        "Enable metric alerts", 
+                        value=False,
+                        help="Configure alerts to trigger when metric values exceed thresholds"
+                    )
+                
+                # Initialize alert variables
+                alert_message = ""
+                alert_condition = "BETWEEN"
+                lower_limit = 0.0
+                upper_limit = 1.0
+                threshold_value = 0.5
+                
+                if enable_alerts:
+                    with alert_col2:
+                        alert_condition = st.selectbox(
+                            "Alert Condition",
+                            options=[
+                                "BETWEEN",
+                                "GREATER_THAN", 
+                                "GREATER_THAN_EQUAL",
+                                "LESS_THAN",
+                                "LESS_THAN_EQUAL"
+                            ],
+                            index=0,
+                            help="Condition that triggers the alert"
+                        )
+                    
+                    # Threshold inputs based on condition
+                    threshold_col1, threshold_col2 = st.columns(2)
+                    
+                    if alert_condition == "BETWEEN":
+                        with threshold_col1:
+                            lower_limit = st.number_input(
+                                "Lower Limit",
+                                value=0.0,
+                                help="Lower threshold for BETWEEN condition"
+                            )
+                        with threshold_col2:
+                            upper_limit = st.number_input(
+                                "Upper Limit", 
+                                value=1.0,
+                                help="Upper threshold for BETWEEN condition"
+                            )
+                    elif alert_condition in ["GREATER_THAN", "GREATER_THAN_EQUAL"]:
+                        with threshold_col1:
+                            threshold_value = st.number_input(
+                                "Threshold Value",
+                                value=0.5,
+                                help="Threshold value for comparison"
+                            )
+                    elif alert_condition in ["LESS_THAN", "LESS_THAN_EQUAL"]:
+                        with threshold_col1:
+                            threshold_value = st.number_input(
+                                "Threshold Value",
+                                value=0.5,
+                                help="Threshold value for comparison"
+                            )
+                    
+                    # Custom alert message
+                    alert_message = st.text_input(
+                        "Alert Message",
+                        placeholder="Custom alert description...",
+                        help="Optional custom message for the alert"
+                    )
+
                 with col3:
                     st.markdown("") # Spacer
                     st.markdown("") # Spacer
@@ -1527,9 +2231,48 @@ elif page == "Custom Metrics":
                     )
 
                 # Results Section (shown after compute)
+                # Use session state to persist results across button clicks
                 if compute_button:
+                    st.session_state['metric_computed'] = True
+                    st.session_state['compute_params'] = {
+                        'selected_model_id': selected_model_id,
+                        'selected_model_name': selected_model_name,
+                        'metric_name': metric_name,
+                        'metric_type': metric_type,
+                        'custom_function': custom_function if metric_type == "Custom Python Function" else None,
+                        'baseline_start': baseline_start,
+                        'baseline_end': baseline_end,
+                        'current_start': current_start,
+                        'current_end': current_end,
+                        'selected_training_set': selected_training_set if TRAINING_SETS_AVAILABLE else None,
+                        'training_set_confirmed': training_set_confirmed,
+                        'enable_alerts': enable_alerts,
+                        'alert_condition': alert_condition if enable_alerts else None,
+                        'lower_limit': lower_limit if enable_alerts and alert_condition == "BETWEEN" else None,
+                        'upper_limit': upper_limit if enable_alerts and alert_condition == "BETWEEN" else None,
+                        'threshold_value': threshold_value if enable_alerts and alert_condition not in ["BETWEEN"] else None,
+                        'alert_message': alert_message if enable_alerts else None,
+                        'time_period_days': time_period_days,
+                        'ks_threshold': ks_threshold if metric_type == "Kolmogorov-Smirnov Test" else None,
+                        'significance_level': significance_level if metric_type == "Kolmogorov-Smirnov Test" else None,
+                        'psi_threshold': psi_threshold if metric_type == "Population Stability Index (PSI)" else None,
+                        'psi_critical': psi_critical if metric_type == "Population Stability Index (PSI)" else None,
+                        'num_bins': num_bins if metric_type == "Population Stability Index (PSI)" else None,
+                        'js_threshold': js_threshold if metric_type == "Jensen-Shannon Divergence" else None
+                    }
+
+                if st.session_state.get('metric_computed', False):
                     st.markdown("---")
-                    st.markdown("### 📊 Results")
+
+                    # Header with clear button
+                    col_header1, col_header2 = st.columns([3, 1])
+                    with col_header1:
+                        st.markdown("### 📊 Results")
+                    with col_header2:
+                        if st.button("🔄 Clear Results", key="clear_results"):
+                            st.session_state['metric_computed'] = False
+                            st.session_state.pop('compute_params', None)
+                            st.rerun()
 
                     # Check if training set is confirmed when available
                     if TRAINING_SETS_AVAILABLE and selected_training_set and not training_set_confirmed:
@@ -1830,6 +2573,50 @@ elif page == "Custom Metrics":
 
                                 st.success(f"✅ Metric '{metric_name}' logged successfully!")
 
+                                # Send alert if configured
+                                if enable_alerts:
+                                    try:
+                                        # Determine condition and parameters
+                                        condition_mapping = {
+                                            "BETWEEN": metrics_client.BETWEEN,
+                                            "GREATER_THAN": metrics_client.GREATER_THAN,
+                                            "GREATER_THAN_EQUAL": metrics_client.GREATER_THAN_EQUAL,
+                                            "LESS_THAN": metrics_client.LESS_THAN,
+                                            "LESS_THAN_EQUAL": metrics_client.LESS_THAN_EQUAL
+                                        }
+                                        
+                                        condition = condition_mapping[alert_condition]
+                                        metric_value = float(result['value'])
+                                        
+                                        # Prepare alert parameters
+                                        alert_args = [selected_model_id, metric_name, metric_value]
+                                        alert_kwargs = {
+                                            'condition': condition
+                                        }
+                                        
+                                        # Add thresholds based on condition
+                                        if alert_condition == "BETWEEN":
+                                            alert_kwargs['lower_limit'] = lower_limit
+                                            alert_kwargs['upper_limit'] = upper_limit
+                                        elif alert_condition in ["GREATER_THAN", "GREATER_THAN_EQUAL"]:
+                                            alert_kwargs['upper_limit'] = threshold_value
+                                        elif alert_condition in ["LESS_THAN", "LESS_THAN_EQUAL"]:
+                                            alert_kwargs['lower_limit'] = threshold_value
+                                        
+                                        # Add custom message if provided, otherwise use default
+                                        if 'alert_message' in locals() and alert_message and alert_message.strip():
+                                            alert_kwargs['description'] = alert_message.strip()
+                                        else:
+                                            alert_kwargs['description'] = f"Alert triggered for metric '{metric_name}'"
+
+                                        # Send alert
+                                        metrics_client.trigger_alert(*alert_args, **alert_kwargs)
+                                        st.success("🚨 Alert configuration sent successfully!")
+                                        
+                                    except Exception as alert_error:
+                                        st.warning(f"⚠️ Failed to send alert: {alert_error}")
+                                        st.info("Metric was still logged successfully")
+
                             except Exception as e:
                                 st.warning(f"⚠️ Failed to log metric to Domino: {e}")
                                 st.info("Displaying results anyway...")
@@ -1837,7 +2624,7 @@ elif page == "Custom Metrics":
                         # Display results
                         col1, col2, col3 = st.columns(3)
                         with col1:
-                            st.metric("Metric Value", f"{result['value']:.4f}", help="Computed metric value")
+                            st.metric("Metric Value", f"{float(result['value']):.4f}", help="Computed metric value")
                         with col2:
                             status_display = {
                                 'ok': '✅ OK',
@@ -1850,9 +2637,91 @@ elif page == "Custom Metrics":
                             st.metric("Total Samples", f"{total_samples:,}", help="Baseline + Current samples")
 
                         # Details in expander
-                        with st.expander("📋 View Detailed Results", expanded=True):
+                        with st.expander("📋 View Detailed Results", expanded=False):
                             st.markdown("**Metric Details:**")
                             st.json(result['metadata'])
+
+                        # Scheduled Job Creation (for all metric types)
+                        st.markdown("---")
+                        st.markdown("### Set up recurring checks for your custom metric")
+                        
+                        st.markdown("**Generate a scheduled job script to automate this metric computation:**")
+                        st.caption("This will create a Python script that can be run on a schedule to automatically compute this metric and send alerts.")
+                        
+                        col_btn1, col_btn2 = st.columns([1, 3])
+                        with col_btn1:
+                            generate_script = st.button("📄 Generate Job Script", type="primary", key="generate_job_script")
+
+                            if generate_script:
+                                try:
+                                    # Get parameters from session state
+                                    params = st.session_state.get('compute_params', {})
+
+                                    # Create script content
+                                    script_content = generate_metric_job_script(
+                                        metric_name=params.get('metric_name', metric_name),
+                                        metric_type=params.get('metric_type', metric_type),
+                                        custom_function=params.get('custom_function'),
+                                        selected_model_id=params.get('selected_model_id', selected_model_id),
+                                        selected_model_name=params.get('selected_model_name', selected_model_name),
+                                        baseline_data_config={
+                                            'use_training_set': TRAINING_SETS_AVAILABLE and params.get('selected_training_set') and params.get('training_set_confirmed'),
+                                            'training_set': params.get('selected_training_set') if TRAINING_SETS_AVAILABLE and params.get('selected_training_set') and params.get('training_set_confirmed') else None
+                                        },
+                                        current_data_config={
+                                            'days': params.get('time_period_days', time_period_days)
+                                        },
+                                        alert_config={
+                                            'enabled': params.get('enable_alerts', False),
+                                            'condition': params.get('alert_condition'),
+                                            'lower_limit': params.get('lower_limit'),
+                                            'upper_limit': params.get('upper_limit'),
+                                            'threshold_value': params.get('threshold_value'),
+                                            'message': params.get('alert_message')
+                                        } if params.get('enable_alerts') else None,
+                                        metric_params={
+                                            'ks_threshold': params.get('ks_threshold'),
+                                            'significance_level': params.get('significance_level'),
+                                            'psi_threshold': params.get('psi_threshold'),
+                                            'psi_critical': params.get('psi_critical'),
+                                            'num_bins': params.get('num_bins'),
+                                            'js_threshold': params.get('js_threshold')
+                                        }
+                                    )
+
+                                    # Save script to artifacts/custom_metrics
+                                    script_filename = f"{params.get('metric_name', metric_name)}_job.py"
+                                    script_dir = Path("/mnt/artifacts/custom_metrics")
+                                    script_dir.mkdir(parents=True, exist_ok=True)
+                                    script_path = script_dir / script_filename
+                                    
+                                    with open(script_path, 'w') as f:
+                                        f.write(script_content)
+                                    
+                                    st.success(f"✅ Job script created successfully!")
+                                    st.info(f"📍 **Script Location:** `/mnt/artifacts/custom_metrics/{script_filename}`")
+                                    
+                                    # Instructions for setting up scheduled job
+                                    with st.expander("📚 How to Set Up Scheduled Job", expanded=True):
+                                        st.markdown("""
+                                        **Quick Setup Instructions:**
+                                        
+                                        1. **Navigate to Jobs** in your Domino project
+                                        2. **Click "Create Job"** 
+                                        3. **Configure the job:**
+                                           - **File to Run:** `artifacts/custom_metrics/{}`
+                                           - **Environment:** Choose an environment with required packages
+                                           - **Schedule:** Set your desired frequency (daily/weekly/hourly)
+                                        4. **Save and Start** the scheduled job
+                                        
+                                        📖 **Full Documentation:** [Schedule Jobs Guide](https://docs.dominodatalab.com/en/cloud/user_guide/5dce1f/schedule-jobs/)
+                                        
+                                        **💡 Tip:** Test the script manually first by running it as a regular job before scheduling it.
+                                        """.format(script_filename))
+                                    
+                                except Exception as script_error:
+                                    st.error(f"❌ Failed to create job script: {script_error}")
+                                    st.exception(script_error)
 
                     except Exception as e:
                         st.error(f"❌ Error computing metric: {e}")

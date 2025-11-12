@@ -16,6 +16,7 @@ Streamlit dashboard for comprehensive model monitoring with custom metrics capab
    - **File to Execute**: `app-model-monitor-extension/app.sh`
    - **Hardware Tier**: Select appropriate compute
    - **Environment**: Python with Streamlit support
+   - **Thumbnail**: Download the `mnt/code/app-model-monitor-extension/app-images/app_thumbnail.png` and upload
 3. **Publish** the app
 
 📖 **Full guide**: [Domino Apps Documentation](https://docs.dominodatalab.com/en/cloud/user_guide/cd0095/publish-and-share-an-app/)
