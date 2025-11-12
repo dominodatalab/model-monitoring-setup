@@ -2693,11 +2693,12 @@ elif page == "Custom Metrics":
                                     script_filename = f"{params.get('metric_name', metric_name)}_job.py"
                                     script_path = f"artifacts/custom_metrics/{script_filename}"
 
-                                    # Create a simple write script file
+                                    # Encode the script content
                                     import base64
                                     encoded_content = base64.b64encode(script_content.encode('utf-8')).decode('utf-8')
 
-                                    # Create a temporary Python file that will write the actual script
+                                    # Create an inline Python script that will be executed via bash
+                                    # This avoids needing to write a temporary file
                                     writer_script = f"""import base64
 from pathlib import Path
 
@@ -2713,14 +2714,8 @@ print(f'✅ Created {{script_path}}')
 print(f'📁 Available at: artifacts/custom_metrics/{script_filename}')
 """
 
-                                    # Save writer script to artifacts directory
-                                    writer_filename = f".tmp_write_{script_filename}"
-                                    writer_dir = Path("/mnt/artifacts/custom_metrics")
-                                    writer_dir.mkdir(parents=True, exist_ok=True)
-                                    writer_path = writer_dir / writer_filename
-
-                                    with open(writer_path, 'w') as f:
-                                        f.write(writer_script)
+                                    # Encode the writer script itself for inline execution
+                                    encoded_writer = base64.b64encode(writer_script.encode('utf-8')).decode('utf-8')
 
                                     try:
                                         # Initialize Domino client
@@ -2730,12 +2725,11 @@ print(f'📁 Available at: artifacts/custom_metrics/{script_filename}')
                                             host=API_HOST
                                         )
 
-                                        # Start a job to create the file
-                                        # Command must be a string, not a list
-                                        # Jobs read from artifacts directory
+                                        # Start a job with inline bash command that executes Python
+                                        # Use base64 to pass the script without file persistence issues
                                         with st.spinner("Creating job script via Domino API..."):
                                             job_result = d.job_start(
-                                                command=f"python artifacts/custom_metrics/{writer_filename}",
+                                                command=f"echo '{encoded_writer}' | base64 -d | python",
                                                 title=f"Create {script_filename}"
                                             )
 
