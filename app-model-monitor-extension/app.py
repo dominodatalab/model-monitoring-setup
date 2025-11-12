@@ -20,8 +20,13 @@ from pathlib import Path
 # Add current directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
 
-from api_client import ModelMonitoringClient
-import config
+try:
+    from api_client import ModelMonitoringClient
+    import config
+except ImportError:
+    # Handle relative imports when running directly
+    from .api_client import ModelMonitoringClient
+    from . import config
 
 # Try to import domino for custom metrics
 try:
