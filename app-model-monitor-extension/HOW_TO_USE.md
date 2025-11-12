@@ -24,6 +24,35 @@ Select from built-in statistical tests or create your own:
 - **Jensen-Shannon Divergence** - Symmetric measure of distribution similarity
 - **Custom Python Function** - Write your own metric logic
 
+#### Using Custom Python Functions
+
+For custom metrics, you need to provide a Python function with this signature:
+
+```python
+def compute_metric(baseline_data, current_data):
+    # Your metric logic here
+    return {
+        'value': float,        # The metric value
+        'metadata': dict,      # Additional info (samples, type, etc.)
+        'status': str          # 'ok', 'warning', or 'critical'
+    }
+```
+
+**Example Available**: See `/mnt/code/app-model-monitor-extension/example-custom-metric.py` for a complete example implementing **Wasserstein Distance** (Earth Mover's Distance) for drift detection.
+
+**To use the example:**
+1. Open `example-custom-metric.py` in the app directory
+2. Copy the entire function (including imports)
+3. Paste into the "Custom Python Function" text area in the app
+4. Configure your data sources and compute the metric
+
+The example demonstrates:
+- Handling both pandas DataFrames and numpy arrays
+- Cleaning NaN values
+- Calculating a distance metric
+- Setting status thresholds (ok/warning/critical)
+- Returning properly formatted results
+
 ### 3. Configure Data Sources
 
 #### Baseline Data (Training Data)
