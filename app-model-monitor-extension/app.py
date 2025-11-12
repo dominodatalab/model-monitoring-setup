@@ -2700,7 +2700,6 @@ elif page == "Custom Metrics":
                                     # Create a temporary Python file that will write the actual script
                                     writer_script = f"""import base64
 from pathlib import Path
-import shutil
 
 content = base64.b64decode('{encoded_content}').decode('utf-8')
 script_dir = Path('artifacts/custom_metrics')
@@ -2711,16 +2710,14 @@ script_path = script_dir / '{script_filename}'
 with open(script_path, 'w') as f:
     f.write(content)
 print(f'✅ Created {{script_path}}')
-
-# Also save this writer script to artifacts for reference
-writer_path = script_dir / '.tmp_write_{script_filename}'
-shutil.copy(__file__, writer_path)
-print(f'✅ Saved writer script to {{writer_path}}')
+print(f'📁 Available at: artifacts/custom_metrics/{script_filename}')
 """
 
-                                    # Save writer script to a temporary location that will be synced
+                                    # Save writer script to artifacts directory
                                     writer_filename = f".tmp_write_{script_filename}"
-                                    writer_path = Path(f"/mnt/code/{writer_filename}")
+                                    writer_dir = Path("/mnt/artifacts/custom_metrics")
+                                    writer_dir.mkdir(parents=True, exist_ok=True)
+                                    writer_path = writer_dir / writer_filename
 
                                     with open(writer_path, 'w') as f:
                                         f.write(writer_script)
@@ -2735,9 +2732,10 @@ print(f'✅ Saved writer script to {{writer_path}}')
 
                                         # Start a job to create the file
                                         # Command must be a string, not a list
+                                        # Jobs read from artifacts directory
                                         with st.spinner("Creating job script via Domino API..."):
                                             job_result = d.job_start(
-                                                command=f"python {writer_filename}",
+                                                command=f"python artifacts/custom_metrics/{writer_filename}",
                                                 title=f"Create {script_filename}"
                                             )
 
