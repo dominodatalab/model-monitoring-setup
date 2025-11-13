@@ -2691,7 +2691,7 @@ elif page == "Custom Metrics":
 
                                     # Use Domino API to start a job that creates the script file
                                     script_filename = f"{params.get('metric_name', metric_name)}_job.py"
-                                    script_path = f"/mnt/code/app-model-monitor-extension/{script_filename}"
+                                    script_path = f"/mnt/artifacts/custom_metrics/{script_filename}"
 
                                     # Encode the script content
                                     import base64
@@ -2703,7 +2703,7 @@ elif page == "Custom Metrics":
 from pathlib import Path
 
 content = base64.b64decode('{encoded_content}').decode('utf-8')
-script_dir = Path('/mnt/code/app-model-monitor-extension')
+script_dir = Path('/mnt/artifacts/custom_metrics')
 script_dir.mkdir(parents=True, exist_ok=True)
 
 # Write the metric job script
@@ -2711,7 +2711,7 @@ script_path = script_dir / '{script_filename}'
 with open(script_path, 'w') as f:
     f.write(content)
 print(f'✅ Created {{script_path}}')
-print(f'📁 Script saved to: /mnt/code/app-model-monitor-extension/{script_filename}')
+print(f'📁 Script saved to: /mnt/artifacts/custom_metrics/{script_filename}')
 """
 
                                     # Encode the writer script itself for inline execution
@@ -2744,13 +2744,20 @@ print(f'📁 Script saved to: /mnt/code/app-model-monitor-extension/{script_file
                                             **Quick Setup Instructions:**
 
                                             1. **Wait for the file creation job to complete** (Job ID: `{job_id}`)
-                                            2. **Navigate to Jobs** in your Domino project
-                                            3. **Click "Create Job"**
-                                            4. **Configure the job:**
-                                               - **File to Run:** `app-model-monitor-extension/{script_filename}`
+                                            2. **Move the script to the code directory:**
+                                               - Start a Domino **Workspace** and then open a Terminal
+                                               - Run the copy command:
+                                               ```bash
+                                               cp /mnt/artifacts/custom_metrics/{script_filename} /mnt/code/{script_filename}
+                                               ```
+                                               - **Sync** your workspace to save changes
+                                            3. **Navigate to Jobs** in your Domino project
+                                            4. **Click "Create Job"**
+                                            5. **Configure the job:**
+                                               - **File to Run:** `{script_filename}`
                                                - **Environment:** Choose an environment with required packages
                                                - **Schedule:** Set your desired frequency (daily/weekly/hourly)
-                                            5. **Save and Start** the scheduled job
+                                            6. **Save and Start** the scheduled job
 
                                             📖 **Full Documentation:** [Schedule Jobs Guide](https://docs.dominodatalab.com/en/cloud/user_guide/5dce1f/schedule-jobs/)
 
