@@ -22,6 +22,7 @@ import os
 import requests
 import time
 import sys
+import uuid
 from typing import List, Dict, Any
 
 # Add parent directory to path to import config_loader
@@ -271,9 +272,9 @@ class DriftedPredictionGenerator:
             # Apply drift to features
             drifted_sample = self.apply_drift_to_sample(base_sample, pattern, i)
             
-            # Create prediction record
+            # Create prediction record with proper event ID (UUID format)
             prediction = {
-                'prediction_id': f'pred_{i+1:03d}',
+                'event_id': str(uuid.uuid4()),  # Use UUID format to match prediction data
                 'timestamp': datetime.now(timezone.utc).isoformat(),
                 'actual_target': target_class,
                 'drift_pattern': pattern['name'],
@@ -281,9 +282,9 @@ class DriftedPredictionGenerator:
                 'prediction_index': i
             }
             
-            # Add feature values
+            # Add feature values with proper column names (remove 'feature_' prefix)
             for feature in self.feature_names:
-                prediction[f'feature_{feature}'] = drifted_sample[feature]
+                prediction[feature] = drifted_sample[feature]
             
             predictions.append(prediction)
             
@@ -319,13 +320,11 @@ class DriftedPredictionGenerator:
         print("-" * 90)
         
         for feature in self.feature_names:
-            feature_col = f'feature_{feature}'
-            
-            if feature_col in predictions_df.columns:
+            if feature in predictions_df.columns:
                 orig_mean = self.feature_stats[feature]['mean']
                 orig_std = self.feature_stats[feature]['std']
-                drift_mean = predictions_df[feature_col].mean()
-                drift_std = predictions_df[feature_col].std()
+                drift_mean = predictions_df[feature].mean()
+                drift_std = predictions_df[feature].std()
                 
                 delta_mean = drift_mean - orig_mean
                 delta_std = drift_std - orig_std
@@ -366,13 +365,14 @@ def call_model_api_with_predictions(predictions_df: pd.DataFrame) -> bool:
     
     for idx, row in predictions_df.iterrows():
         try:
-            # Prepare payload with feature data (similar to 4_generate_predictions.py)
+            # Prepare payload with feature data (features don't have 'feature_' prefix now)
             feature_data = {}
-            for col in predictions_df.columns:
-                if col.startswith('feature_'):
-                    # Remove 'feature_' prefix for API call
-                    feature_name = col.replace('feature_', '')
-                    feature_data[feature_name] = float(row[col])
+            feature_columns = [col for col in predictions_df.columns 
+                             if col not in ['event_id', 'timestamp', 'actual_target', 
+                                          'drift_pattern', 'drift_description', 'prediction_index']]
+            
+            for col in feature_columns:
+                feature_data[col] = float(row[col])
             
             payload = {'data': feature_data}
             
@@ -435,7 +435,7 @@ def upload_ground_truth(predictions_df: pd.DataFrame) -> bool:
         records = []
         for _, row in predictions_df.iterrows():
             records.append({
-                'event_id': row['prediction_id'],
+                'event_id': row['event_id'],  # Use proper event_id column
                 'actual_target': row['actual_target'],
                 'timestamp': row['timestamp']
             })
@@ -551,7 +551,7 @@ Examples:
 
     # Show sample predictions
     print(f"\n📋 Sample predictions (first 3):")
-    sample_cols = ['prediction_id', 'actual_target', 'drift_pattern'] + [f'feature_{f}' for f in generator.feature_names[:3]]
+    sample_cols = ['event_id', 'actual_target', 'drift_pattern'] + generator.feature_names[:3]
     print(predictions[sample_cols].head(3).to_string(index=False))
 
     # Call model API with generated data
