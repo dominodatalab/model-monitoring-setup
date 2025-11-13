@@ -66,17 +66,47 @@ class GroundTruthUploader:
 
         print(f"🔍 Searching {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
 
-        file_paths = []
+        # Generate potential file paths
+        potential_paths = []
         current = start_date.date()
         end = end_date.date()
 
         while current <= end:
-            path = f"ground_truth/{self.config.model_monitor_id}/{current.strftime('%Y-%m-%d')}.csv"
-            file_paths.append(path)
+            date_str = current.strftime('%Y-%m-%d')
+            # Check for both regular and _drifted files
+            base_path = f"ground_truth/{self.config.model_monitor_id}/{date_str}"
+            potential_paths.append(f"{base_path}.csv")
+            potential_paths.append(f"{base_path}_drifted.csv")
             current += timedelta(days=1)
 
-        print(f"📂 Generated {len(file_paths)} file paths")
-        return file_paths
+        print(f"📂 Generated {len(potential_paths)} potential file paths")
+
+        # Verify which files actually exist in the data source
+        print(f"🔍 Verifying files exist in data source...")
+        try:
+            from domino.data_sources import DataSourceClient
+            datasource = DataSourceClient().get_datasource(self.config.ground_truth_datasource)
+
+            # Get all objects with the ground_truth prefix for this model
+            prefix = f"ground_truth/{self.config.model_monitor_id}/"
+            existing_objects = datasource.list_objects(prefix=prefix)
+            existing_keys = {obj.key for obj in existing_objects}
+
+            # Filter to only files that exist
+            file_paths = [path for path in potential_paths if path in existing_keys]
+
+            print(f"✅ Found {len(file_paths)} existing files out of {len(potential_paths)} candidates")
+            if file_paths:
+                print(f"   Files to process:")
+                for path in file_paths:
+                    print(f"      - {Path(path).name}")
+
+            return file_paths
+
+        except Exception as e:
+            print(f"⚠️  Could not verify files in data source: {e}")
+            print(f"   Will attempt to process all {len(potential_paths)} potential paths")
+            return potential_paths
 
     def check_existing_dataset(self, dataset_name):
         """Check if dataset already exists"""
